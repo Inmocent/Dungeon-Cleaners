@@ -63,12 +63,14 @@ public class GameOverController : MonoBehaviour
 
     void OnPlayAgain()
     {
+        Time.timeScale = 1f;
         if (GameRunData.Instance) GameRunData.Instance.StartNewRun();
         SceneNav.GoTo(SceneNames.SquadBuilder);
     }
 
     void OnMainMenu()
     {
+        Time.timeScale = 1f;
         SceneNav.GoTo(SceneNames.MainMenu);
     }
 }

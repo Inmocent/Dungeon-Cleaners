@@ -12,6 +12,7 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
     public Slider energyBar;
     public Image hpFill;
     public Image energyFill;
+    public TextMeshProUGUI hpLabel;       // e.g. "85/85"
     public TextMeshProUGUI fatiguedLabel;  // "FATIGUED" warning
     public Image deadOverlay;             // semi-transparent dark overlay when dead
 
@@ -27,7 +28,21 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
         hero = h;
         onTap = tapCb;
 
-        if (portraitCircle) portraitCircle.color = h.data.classColor;
+        string prefix = SpriteMapping.GetHeroSpritePrefix(h.data.heroName);
+        var heroSprite = SpriteCache.LoadSprite($"{prefix}_idle_anim_f0");
+        if (portraitCircle)
+        {
+            if (heroSprite != null)
+            {
+                portraitCircle.sprite = heroSprite;
+                portraitCircle.preserveAspect = true;
+                portraitCircle.color = Color.white;
+            }
+            else
+            {
+                portraitCircle.color = h.data.classColor;
+            }
+        }
         if (nameLabel) nameLabel.text = h.displayName;
 
         if (hpBar)
@@ -41,8 +56,15 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
             energyBar.value = h.currentEnergy;
         }
 
+        if (hpLabel == null && hpBar != null)
+        {
+            hpLabel = hpBar.GetComponentInChildren<TextMeshProUGUI>();
+        }
+
         if (fatiguedLabel) fatiguedLabel.gameObject.SetActive(false);
         if (deadOverlay) deadOverlay.gameObject.SetActive(false);
+
+        Refresh();
     }
 
     public void Refresh()
@@ -51,6 +73,7 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
 
         if (hpBar) hpBar.value = hero.currentHP;
         if (energyBar) energyBar.value = hero.currentEnergy;
+        if (hpLabel) hpLabel.text = $"{hero.currentHP}/{hero.data.maxHP}";
 
         // HP color: green when ok, red when < 30%
         if (hpFill)

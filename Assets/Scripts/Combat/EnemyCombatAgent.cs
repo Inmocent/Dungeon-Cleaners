@@ -2,69 +2,115 @@ using UnityEngine;
 using System.Collections;
 
 /// <summary>
-/// Simple enemy AI — moves toward the nearest hero and attacks.
-/// Placeholder art: red circle.
+/// Enemy AI with animated sprites.
+/// Moves toward nearest hero and attacks. Spawns within a specific dungeon room.
+/// Supports regular enemies (skeletons, goblins) and bosses.
 /// </summary>
+[RequireComponent(typeof(SpriteRenderer))]
 public class EnemyCombatAgent : MonoBehaviour
 {
-    private CombatController combat;
+    private ICombatController combat;
+    private CharacterAnimator animator;
     private SpriteRenderer sr;
     private bool isBoss;
     private float attackTimer;
+    private int roomIndex;  // which room this enemy belongs to
 
     public int maxHP;
     public int currentHP;
     public int attackDamage = 12;
     public float moveSpeed = 1.5f;
     public float attackSpeed = 0.8f;
+    public float attackRange = 1.0f;
 
     public bool IsAlive => currentHP > 0;
+    public int RoomIndex => roomIndex;
 
-    public void Init(bool boss, CombatController ctrl)
+    public void Init(bool boss, ICombatController ctrl, int roomIdx = 0)
     {
         isBoss = boss;
         combat = ctrl;
+        roomIndex = roomIdx;
 
-        if (boss) { maxHP = 500; attackDamage = 25; moveSpeed = 0.8f; }
-        else      { maxHP = Random.Range(40, 80); attackDamage = Random.Range(8, 15); }
+        if (boss)
+        {
+            maxHP = 500;
+            attackDamage = 25;
+            moveSpeed = 0.8f;
+            attackRange = 1.5f;
+        }
+        else
+        {
+            maxHP = Random.Range(40, 80);
+            attackDamage = Random.Range(8, 15);
+            moveSpeed = Random.Range(1.0f, 2.0f);
+        }
 
         currentHP = maxHP;
         sr = GetComponent<SpriteRenderer>();
+        sr.sortingOrder = 10;
 
-        if (sr)
+        // Setup animated sprite
+        animator = gameObject.AddComponent<CharacterAnimator>();
+        string spritePrefix = boss ?
+            SpriteMapping.GetBossPrefix() :
+            SpriteMapping.GetRandomEnemyPrefix();
+
+        animator.SetupEnemy(spritePrefix);
+
+        if (boss)
         {
-            sr.color = boss ? new Color(0.5f, 0f, 0.5f) : new Color(0.8f, 0.1f, 0.1f);
-            transform.localScale = boss ? Vector3.one * 2f : Vector3.one;
+            transform.localScale = Vector3.one * 2f;
+        }
+        else
+        {
+            transform.localScale = Vector3.one * 1.2f;
         }
 
-        // Spawn on right half of arena
-        float x = Random.Range(1.5f, 4f);
-        float y = Random.Range(-2f, 2f);
-        transform.localPosition = new Vector3(x, y, 0);
+        // Face left (toward heroes)
+        animator.SetFacing(false);
+    }
+
+    void LateUpdate()
+    {
+        if (sr != null)
+        {
+            sr.sortingOrder = 100 - Mathf.RoundToInt(transform.position.y * 10);
+        }
     }
 
     void Update()
     {
-        if (!IsAlive || combat.IsPaused) return;
+        if (!IsAlive || combat == null || combat.IsPaused) return;
+        if (!combat.IsInCombatPhase) return;
 
         var target = FindNearestHero();
-        if (target == null) return;
-
-        float dist = Vector3.Distance(transform.position, target.transform.position);
-        float range = 1.2f;
-
-        if (dist > range)
+        if (target == null)
         {
-            Vector3 dir = (target.transform.position - transform.position).normalized;
-            transform.position += dir * moveSpeed * Time.deltaTime;
+            animator.SetState(CharacterAnimator.AnimState.Idle);
+            return;
+        }
+
+        float dist = Vector2.Distance(transform.position, target.transform.position);
+
+        if (dist > attackRange)
+        {
+            Vector2 dir = ((Vector2)target.transform.position - (Vector2)transform.position).normalized;
+            transform.position += (Vector3)(dir * moveSpeed * Time.deltaTime);
+            animator.SetState(CharacterAnimator.AnimState.Run);
+            animator.SetFacing(dir.x >= 0);
         }
         else
         {
+            animator.SetState(CharacterAnimator.AnimState.Idle);
             attackTimer -= Time.deltaTime;
             if (attackTimer <= 0f)
             {
                 attackTimer = 1f / attackSpeed;
                 target.TakeDamage(attackDamage);
+
+                // Attack lunge
+                StartCoroutine(AttackLunge(target.transform.position));
             }
         }
     }
@@ -76,18 +122,37 @@ public class EnemyCombatAgent : MonoBehaviour
         foreach (var h in combat.HeroAgents)
         {
             if (!h.IsAlive) continue;
-            float d = Vector3.Distance(transform.position, h.transform.position);
+            float d = Vector2.Distance(transform.position, h.transform.position);
             if (d < nearestDist) { nearestDist = d; nearest = h; }
         }
         return nearest;
     }
 
+    IEnumerator AttackLunge(Vector3 targetPos)
+    {
+        Vector3 startPos = transform.position;
+        Vector3 lungePos = Vector3.Lerp(startPos, targetPos, 0.25f);
+
+        float t = 0;
+        while (t < 0.08f)
+        {
+            t += Time.deltaTime;
+            transform.position = Vector3.Lerp(startPos, lungePos, t / 0.08f);
+            yield return null;
+        }
+        t = 0;
+        while (t < 0.08f)
+        {
+            t += Time.deltaTime;
+            transform.position = Vector3.Lerp(lungePos, startPos, t / 0.08f);
+            yield return null;
+        }
+    }
+
     public void TakeDamage(int dmg, HeroCombatAgent attacker = null)
     {
         currentHP -= dmg;
-
-        // Flash on hit
-        if (sr) StartCoroutine(FlashHit());
+        if (animator) animator.FlashHit();
 
         if (isBoss && attacker != null)
             combat.DamageBoss(dmg);
@@ -105,20 +170,19 @@ public class EnemyCombatAgent : MonoBehaviour
         gameObject.SetActive(false);
     }
 
-    IEnumerator FlashHit()
-    {
-        sr.color = Color.white;
-        yield return new WaitForSeconds(0.08f);
-        sr.color = isBoss ? new Color(0.5f, 0f, 0.5f) : new Color(0.8f, 0.1f, 0.1f);
-    }
-
     IEnumerator DieEffect()
     {
+        // Flash red, fade out, shrink
+        if (sr) sr.color = new Color(1f, 0.2f, 0.2f, 1f);
+
         float t = 0;
-        while (t < 0.3f)
+        Vector3 startScale = transform.localScale;
+        while (t < 0.4f)
         {
             t += Time.deltaTime;
-            transform.localScale = Vector3.Lerp(transform.localScale, Vector3.zero, t / 0.3f);
+            float progress = t / 0.4f;
+            transform.localScale = Vector3.Lerp(startScale, Vector3.zero, progress);
+            if (sr) sr.color = new Color(1f, 0.2f, 0.2f, 1f - progress);
             yield return null;
         }
         gameObject.SetActive(false);

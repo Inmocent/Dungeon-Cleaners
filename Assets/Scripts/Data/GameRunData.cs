@@ -18,7 +18,7 @@ public class GameRunData : MonoBehaviour
                 {
                     var go = new GameObject("GameRunData");
                     _instance = go.AddComponent<GameRunData>();
-                    DontDestroyOnLoad(go);
+                    if (Application.isPlaying) DontDestroyOnLoad(go);
                     _instance.LoadDefaultHeroes();
                 }
             }
@@ -50,7 +50,7 @@ public class GameRunData : MonoBehaviour
             return;
         }
         _instance = this;
-        DontDestroyOnLoad(gameObject);
+        if (Application.isPlaying) DontDestroyOnLoad(gameObject);
 
         if (availableHeroes.Count == 0)
         {

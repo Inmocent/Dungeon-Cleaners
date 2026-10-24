@@ -8,7 +8,7 @@ using System.Collections.Generic;
 /// Main combat HUD controller — autobattle loop, portrait panel,
 /// healer priority, reposition, speed toggle, pause.
 /// </summary>
-public class CombatController : MonoBehaviour
+public class CombatController : MonoBehaviour, ICombatController
 {
     [Header("Arena")]
     public Transform arenaContainer;        // parent for hero/enemy combat agents
@@ -402,7 +402,7 @@ public class CombatController : MonoBehaviour
     }
 
     // ---- Helpers ----
-    void RefreshPortraits()
+    public void RefreshPortraits()
     {
         foreach (var p in portraits) p.Refresh();
     }
@@ -427,4 +427,5 @@ public class CombatController : MonoBehaviour
     public List<HeroCombatAgent> HeroAgents => heroAgents;
     public List<EnemyCombatAgent> EnemyAgents => enemyAgents;
     public bool IsPaused => isPaused;
+    public bool IsInCombatPhase => true;
 }

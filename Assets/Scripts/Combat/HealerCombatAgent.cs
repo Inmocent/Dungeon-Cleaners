@@ -1,13 +1,13 @@
 using UnityEngine;
-using System.Collections;
 
 /// <summary>
-/// Healer AI — attacks enemies when possible, periodically heals the lowest HP ally.
+/// Healer AI — periodically heals the lowest HP ally.
+/// Works alongside HeroCombatAgent on the same GameObject.
 /// </summary>
 public class HealerCombatAgent : MonoBehaviour
 {
     private HeroCombatAgent baseAgent;
-    private CombatController combat;
+    private ICombatController combat;
     private float healTimer = 3f;
     private const float HEAL_INTERVAL = 4f;
     private const int HEAL_AMOUNT = 20;
@@ -17,14 +17,15 @@ public class HealerCombatAgent : MonoBehaviour
         baseAgent = GetComponent<HeroCombatAgent>();
     }
 
-    public void Init(CombatController ctrl)
+    public void Init(ICombatController ctrl)
     {
         combat = ctrl;
     }
 
     void Update()
     {
-        if (!baseAgent.IsAlive || combat.IsPaused) return;
+        if (baseAgent == null || !baseAgent.IsAlive || combat == null || combat.IsPaused) return;
+        if (!combat.IsInCombatPhase) return;
 
         healTimer -= Time.deltaTime;
         if (healTimer <= 0f)

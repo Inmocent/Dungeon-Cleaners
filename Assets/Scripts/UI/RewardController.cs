@@ -27,6 +27,7 @@ public class RewardController : MonoBehaviour
 
     void Start()
     {
+        Time.timeScale = 1f;
         GameRunData.Instance?.EnsureSquadAndFormation();
         restModal.SetActive(false);
         confirmButton.interactable = false;

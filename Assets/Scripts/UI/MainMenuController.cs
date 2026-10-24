@@ -8,6 +8,7 @@ public class MainMenuController : MonoBehaviour
     [Header("Buttons")]
     public Button startRunButton;
     public Button squadButton;
+    public Button formationButton;
     public Button settingsButton;
 
     [Header("Settings Panel")]
@@ -15,11 +16,14 @@ public class MainMenuController : MonoBehaviour
 
     void Start()
     {
-        settingsPanel.SetActive(false);
+        Time.timeScale = 1f;
 
-        startRunButton.onClick.AddListener(OnStartRun);
-        squadButton.onClick.AddListener(OnSquad);
-        settingsButton.onClick.AddListener(OnSettings);
+        if (settingsPanel) settingsPanel.SetActive(false);
+
+        if (startRunButton) startRunButton.onClick.AddListener(OnStartRun);
+        if (squadButton) squadButton.onClick.AddListener(OnSquad);
+        if (formationButton) formationButton.onClick.AddListener(OnFormation);
+        if (settingsButton) settingsButton.onClick.AddListener(OnSettings);
     }
 
     void OnStartRun()
@@ -34,8 +38,16 @@ public class MainMenuController : MonoBehaviour
         SceneNav.GoTo(SceneNames.SquadBuilder);
     }
 
+    void OnFormation()
+    {
+        if (GameRunData.Instance != null)
+            GameRunData.Instance.EnsureSquadAndFormation();
+        SceneNav.GoTo(SceneNames.Formation);
+    }
+
     void OnSettings()
     {
-        settingsPanel.SetActive(!settingsPanel.activeSelf);
+        if (settingsPanel)
+            settingsPanel.SetActive(!settingsPanel.activeSelf);
     }
 }

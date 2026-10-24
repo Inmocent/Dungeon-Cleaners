@@ -36,6 +36,8 @@ public class FormationController : MonoBehaviour
 
     void Start()
     {
+        Time.timeScale = 1f;
+
         if (GameRunData.Instance != null && GameRunData.Instance.squad.Count == 0)
         {
             GameRunData.Instance.EnsureSquadAndFormation();
@@ -51,6 +53,44 @@ public class FormationController : MonoBehaviour
         statsPanel.SetActive(false);
         BuildGrid();
         LoadBench();
+        RestoreOrAutoDeploy();
+    }
+
+    void RestoreOrAutoDeploy()
+    {
+        if (GameRunData.Instance == null) return;
+
+        bool hadAny = false;
+        for (int i = 0; i < 9; i++)
+        {
+            var h = GameRunData.Instance.formation[i];
+            if (h != null && GameRunData.Instance.squad.Contains(h))
+            {
+                PlaceHero(h, i);
+                hadAny = true;
+            }
+        }
+
+        if (!hadAny && GameRunData.Instance.squad.Count > 0)
+        {
+            int[] defaultSlots = new int[] { 0, 6, 4, 2, 8 };
+            for (int s = 0; s < GameRunData.Instance.squad.Count && s < defaultSlots.Length; s++)
+            {
+                PlaceHero(GameRunData.Instance.squad[s], defaultSlots[s]);
+            }
+        }
+
+        foreach (Transform child in benchContainer)
+        {
+            var card = child.GetComponent<HeroCardUI>();
+            if (card != null && card.heroInstance != null)
+            {
+                bool isPlaced = System.Array.IndexOf(formation, card.heroInstance) >= 0;
+                card.gameObject.SetActive(!isPlaced);
+            }
+        }
+
+        CheckBattleReady();
     }
 
     void BuildGrid()
