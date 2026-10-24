@@ -113,6 +113,9 @@ public class EnemyCombatAgent : MonoBehaviour
                 StartCoroutine(AttackLunge(target.transform.position));
             }
         }
+
+        // Keep enemy inside the room boundaries
+        ClampToRoomBounds();
     }
 
     HeroCombatAgent FindNearestHero()
@@ -186,5 +189,20 @@ public class EnemyCombatAgent : MonoBehaviour
             yield return null;
         }
         gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// Clamps enemy position to the current room's inner walkable area during combat.
+    /// </summary>
+    void ClampToRoomBounds()
+    {
+        Rect? bounds = combat?.GetCurrentRoomBounds();
+        if (bounds == null) return;
+
+        Rect b = bounds.Value;
+        Vector3 pos = transform.position;
+        pos.x = Mathf.Clamp(pos.x, b.xMin, b.xMax);
+        pos.y = Mathf.Clamp(pos.y, b.yMin, b.yMax);
+        transform.position = pos;
     }
 }

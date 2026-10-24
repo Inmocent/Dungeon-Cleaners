@@ -79,6 +79,15 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
     public bool IsPaused => isPaused;
     public bool IsInCombatPhase => isInCombatPhase;
 
+    /// <summary>
+    /// Returns the inner walkable bounds (with wall margin) for the current combat room.
+    /// </summary>
+    public Rect? GetCurrentRoomBounds()
+    {
+        if (dungeonGenerator == null) return null;
+        return dungeonGenerator.GetInnerRoomBounds(currentRoomIndex);
+    }
+
     void Start()
     {
         Time.timeScale = 1f;
@@ -323,16 +332,50 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
     {
         Vector2 roomCenter = dungeonGenerator.GetRoomCenter(roomIndex);
 
-        // Command all alive heroes to assemble in formation on the left side of the room
-        Vector2 squadTarget = new Vector2(roomCenter.x - 1.2f, roomCenter.y);
-        foreach (var hero in heroAgents)
+        if (roomIndex == 0)
         {
-            if (!hero.IsAlive) continue;
-            hero.MoveTo(squadTarget);
+            // First room: simple direct move (heroes spawn adjacent)
+            Vector2 squadTarget = new Vector2(roomCenter.x - 1.2f, roomCenter.y);
+            foreach (var hero in heroAgents)
+            {
+                if (!hero.IsAlive) continue;
+                hero.MoveTo(squadTarget);
+            }
+        }
+        else
+        {
+            // Subsequent rooms: 3-waypoint corridor pathing
+            // Exit current room door → corridor center → entry next room door → formation assembly
+            Vector2[] corridorWaypoints = dungeonGenerator.GetCorridorWaypoints(roomIndex - 1, roomIndex);
+            Vector2 assemblyPoint = new Vector2(roomCenter.x - 1.2f, roomCenter.y);
+
+            if (corridorWaypoints != null)
+            {
+                // Build full path: corridor waypoints + final assembly point in the new room
+                Vector2[] fullPath = new Vector2[corridorWaypoints.Length + 1];
+                corridorWaypoints.CopyTo(fullPath, 0);
+                fullPath[fullPath.Length - 1] = assemblyPoint;
+
+                foreach (var hero in heroAgents)
+                {
+                    if (!hero.IsAlive) continue;
+                    hero.MoveAlongPath(fullPath);
+                }
+            }
+            else
+            {
+                // Fallback: direct move if waypoints not available
+                Vector2 squadTarget = new Vector2(roomCenter.x - 1.2f, roomCenter.y);
+                foreach (var hero in heroAgents)
+                {
+                    if (!hero.IsAlive) continue;
+                    hero.MoveTo(squadTarget);
+                }
+            }
         }
 
         // Wait until heroes arrive or reasonable timeout
-        float timeout = 8f;
+        float timeout = 12f; // increased for longer corridor paths
         float elapsed = 0f;
         while (elapsed < timeout)
         {
@@ -494,7 +537,14 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 icon = "<color=#EF4444><b>[ ATK ]</b></color>",
                 onSelect = () => {
                     foreach (var h in heroAgents)
-                        if (h.HeroClass == HeroClass.Knight) h.heroInstance.data.attackDamage = Mathf.RoundToInt(h.heroInstance.data.attackDamage * 1.25f);
+                    {
+                        if (h.HeroClass == HeroClass.Knight)
+                        {
+                            h.heroInstance.data.attackDamage = Mathf.RoundToInt(h.heroInstance.data.attackDamage * 1.25f);
+                            h.heroInstance.upgrades.Add("Sharpened Blades (+25% ATK)");
+                        }
+                    }
+                    RefreshPortraits();
                 }
             },
             new RoomUpgradeOption
@@ -504,7 +554,14 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 icon = "<color=#F97316><b>[ FIRE ]</b></color>",
                 onSelect = () => {
                     foreach (var h in heroAgents)
-                        if (h.HeroClass == HeroClass.Mage) h.heroInstance.data.attackDamage = Mathf.RoundToInt(h.heroInstance.data.attackDamage * 1.3f);
+                    {
+                        if (h.HeroClass == HeroClass.Mage)
+                        {
+                            h.heroInstance.data.attackDamage = Mathf.RoundToInt(h.heroInstance.data.attackDamage * 1.3f);
+                            h.heroInstance.upgrades.Add("Arcane Pyre (+30% Spell Power)");
+                        }
+                    }
+                    RefreshPortraits();
                 }
             },
             new RoomUpgradeOption
@@ -514,7 +571,14 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 icon = "<color=#10B981><b>[ HEAL ]</b></color>",
                 onSelect = () => {
                     foreach (var h in heroAgents)
-                        if (h.IsAlive) h.ReceiveHeal(30);
+                    {
+                        if (h.IsAlive)
+                        {
+                            h.ReceiveHeal(30);
+                            h.heroInstance.upgrades.Add("Divine Blessing (+30 HP)");
+                        }
+                    }
+                    RefreshPortraits();
                 }
             },
             new RoomUpgradeOption
@@ -527,6 +591,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                     {
                         h.heroInstance.data.maxHP += 35;
                         h.heroInstance.currentHP += 35;
+                        h.heroInstance.upgrades.Add("Iron Bulwark (+35 Max HP)");
                     }
                     RefreshPortraits();
                 }
@@ -538,7 +603,11 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 icon = "<color=#8B5CF6><b>[ SPEED ]</b></color>",
                 onSelect = () => {
                     foreach (var h in heroAgents)
+                    {
                         h.heroInstance.data.moveSpeed *= 1.2f;
+                        h.heroInstance.upgrades.Add("Swift Strides (+20% Speed)");
+                    }
+                    RefreshPortraits();
                 }
             },
             new RoomUpgradeOption
@@ -582,7 +651,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
     void EnsureRoomUpgradeModal(List<RoomUpgradeOption> options, System.Action onChosen)
     {
-        var canvas = FindObjectOfType<Canvas>();
+        var canvas = FindAnyObjectByType<Canvas>();
         if (canvas == null) return;
 
         if (roomUpgradeModal == null)
@@ -791,7 +860,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         if (detailHP) detailHP.text = $"HP: {hero.currentHP}/{hero.data.maxHP}";
         if (detailEnergy) detailEnergy.text = $"Energy: {hero.currentEnergy}/{hero.data.maxEnergy}";
         string upgrades = hero.upgrades.Count > 0 ?
-            string.Join("\n", hero.upgrades) : "(no upgrades yet)";
+            "• " + string.Join("\n• ", hero.upgrades) : "(no upgrades yet)";
         if (detailUpgrades) detailUpgrades.text = $"Upgrades:\n{upgrades}";
     }
 

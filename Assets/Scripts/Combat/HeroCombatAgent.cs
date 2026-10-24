@@ -27,6 +27,11 @@ public class HeroCombatAgent : MonoBehaviour
     private float kiteDistance = 0f;
     private Vector2 formationOffset;
 
+    // Multi-waypoint corridor pathing
+    private Vector2[] waypointPath;
+    private int currentWaypointIndex;
+    private bool isFollowingPath;
+
     // Dynamic combat strafing
     private float strafeSign = 1f;
     private float strafeTimer;
@@ -92,6 +97,11 @@ public class HeroCombatAgent : MonoBehaviour
         if (combat.IsInCombatPhase)
         {
             HandleCombat();
+            ClampToRoomBounds();
+        }
+        else if (isFollowingPath)
+        {
+            FollowPath();
         }
         else if (isMovingToTarget)
         {
@@ -530,8 +540,63 @@ public class HeroCombatAgent : MonoBehaviour
     {
         targetPosition = position + formationOffset;
         isMovingToTarget = true;
+        isFollowingPath = false;
         animator.SetState(CharacterAnimator.AnimState.Run);
         animator.SetFacing(targetPosition.x > transform.position.x);
+    }
+
+    /// <summary>
+    /// Commands this hero to follow a multi-waypoint path (e.g. through a corridor).
+    /// The final waypoint uses the hero's formation offset.
+    /// </summary>
+    public void MoveAlongPath(Vector2[] waypoints)
+    {
+        if (waypoints == null || waypoints.Length == 0) return;
+
+        // Apply formation offset only to the final destination
+        waypointPath = new Vector2[waypoints.Length];
+        for (int i = 0; i < waypoints.Length; i++)
+        {
+            waypointPath[i] = (i == waypoints.Length - 1)
+                ? waypoints[i] + formationOffset
+                : waypoints[i];
+        }
+
+        currentWaypointIndex = 0;
+        isFollowingPath = true;
+        isMovingToTarget = false;
+        animator.SetState(CharacterAnimator.AnimState.Run);
+    }
+
+    void FollowPath()
+    {
+        if (waypointPath == null || currentWaypointIndex >= waypointPath.Length)
+        {
+            isFollowingPath = false;
+            animator.SetState(CharacterAnimator.AnimState.Idle);
+            return;
+        }
+
+        Vector2 target = waypointPath[currentWaypointIndex];
+        float dist = Vector2.Distance(transform.position, target);
+
+        if (dist < 0.15f)
+        {
+            // Snap and advance to next waypoint
+            transform.position = new Vector3(target.x, target.y, 0f);
+            currentWaypointIndex++;
+
+            if (currentWaypointIndex >= waypointPath.Length)
+            {
+                isFollowingPath = false;
+                animator.SetState(CharacterAnimator.AnimState.Idle);
+            }
+            return;
+        }
+
+        Vector2 dir = (target - (Vector2)transform.position).normalized;
+        transform.position += (Vector3)(dir * heroInstance.data.moveSpeed * Time.deltaTime);
+        animator.SetFacing(dir.x >= 0);
     }
 
     void MoveToTarget()
@@ -552,7 +617,24 @@ public class HeroCombatAgent : MonoBehaviour
 
     public bool HasReachedTarget()
     {
+        if (isFollowingPath) return false;
         if (!isMovingToTarget) return true;
         return Vector2.Distance(transform.position, targetPosition) < 0.15f;
+    }
+
+    /// <summary>
+    /// Clamps hero position to the current room's inner walkable area during combat.
+    /// Prevents mage strafing/kiting from drifting outside room walls.
+    /// </summary>
+    void ClampToRoomBounds()
+    {
+        Rect? bounds = combat?.GetCurrentRoomBounds();
+        if (bounds == null) return;
+
+        Rect b = bounds.Value;
+        Vector3 pos = transform.position;
+        pos.x = Mathf.Clamp(pos.x, b.xMin, b.xMax);
+        pos.y = Mathf.Clamp(pos.y, b.yMin, b.yMax);
+        transform.position = pos;
     }
 }

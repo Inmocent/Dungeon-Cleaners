@@ -52,6 +52,15 @@ public class GameRunData : MonoBehaviour
         _instance = this;
         if (Application.isPlaying) DontDestroyOnLoad(gameObject);
 
+        // Mobile readiness: lock 60 FPS, prevent device sleep during runs, enforce landscape
+        Application.targetFrameRate = 60;
+        Screen.sleepTimeout = SleepTimeout.NeverSleep;
+        Screen.autorotateToPortrait = false;
+        Screen.autorotateToPortraitUpsideDown = false;
+        Screen.autorotateToLandscapeLeft = true;
+        Screen.autorotateToLandscapeRight = true;
+        Screen.orientation = ScreenOrientation.LandscapeLeft;
+
         if (availableHeroes.Count == 0)
         {
             LoadDefaultHeroes();

@@ -327,7 +327,7 @@ public class CombatController : MonoBehaviour, ICombatController
         detailHP.text = $"HP: {hero.currentHP}/{hero.data.maxHP}";
         detailEnergy.text = $"Energy: {hero.currentEnergy}/{hero.data.maxEnergy}";
         string upgrades = hero.upgrades.Count > 0 ?
-            string.Join("\n", hero.upgrades) : "(no upgrades yet)";
+            "• " + string.Join("\n• ", hero.upgrades) : "(no upgrades yet)";
         detailUpgrades.text = $"Upgrades:\n{upgrades}";
     }
 
@@ -428,4 +428,5 @@ public class CombatController : MonoBehaviour, ICombatController
     public List<EnemyCombatAgent> EnemyAgents => enemyAgents;
     public bool IsPaused => isPaused;
     public bool IsInCombatPhase => true;
+    public Rect? GetCurrentRoomBounds() => null;
 }

@@ -200,6 +200,14 @@ public static class DungeonCleanersBuilder
         portraitUI.energyBar = enSlider;
         portraitUI.energyFill = enSlider.fillRect.GetComponent<Image>();
 
+        // Upgrades Badge Row
+        var badgeObj = CreateUIRoot("UpgradesBadge", 110, 15);
+        badgeObj.transform.SetParent(root.transform, false);
+        SetRect(badgeObj.GetComponent<RectTransform>(), 0f, 1f, 0f, 0f, 0, 57, 0, 15);
+        var badgeText = CreateText("BadgeText", badgeObj.transform, "", 10, FontStyles.Bold, TextAlignmentOptions.Center);
+        SetRect(badgeText.rectTransform, 0, 1, 0, 1, 0, 0, 0, 0);
+        portraitUI.upgradesBadgeLabel = badgeText;
+
         // Fatigued Label
         var fatText = CreateText("FatiguedLabel", root.transform, "FATIGUED", 11, FontStyles.Bold, TextAlignmentOptions.Center);
         fatText.color = Color.yellow;

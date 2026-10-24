@@ -130,6 +130,7 @@ public class DungeonGenerator : MonoBehaviour
     void BuildVisuals()
     {
         LoadSpriteAssets();
+        GenerateWallColliders();
 
         foreach (var room in rooms)
         {
@@ -396,5 +397,173 @@ public class DungeonGenerator : MonoBehaviour
         if (roomIndex < 0 || roomIndex >= rooms.Count) return Vector2.zero;
         var room = rooms[roomIndex];
         return new Vector2(room.bounds.xMin + 1f, room.center.y);
+    }
+
+    /// <summary>
+    /// Returns 3 waypoints for heroes to walk through the corridor from one room to the next:
+    ///   [0] = exit door of currentRoom (right edge)
+    ///   [1] = corridor midpoint
+    ///   [2] = entry door of nextRoom (left edge)
+    /// </summary>
+    public Vector2[] GetCorridorWaypoints(int currentRoomIndex, int nextRoomIndex)
+    {
+        if (currentRoomIndex < 0 || currentRoomIndex >= rooms.Count) return null;
+        if (nextRoomIndex < 0 || nextRoomIndex >= rooms.Count) return null;
+
+        var r1 = rooms[currentRoomIndex].bounds;
+        var r2 = rooms[nextRoomIndex].bounds;
+
+        float doorY1 = r1.y + r1.height * 0.5f;
+        float doorY2 = r2.y + r2.height * 0.5f;
+        float corridorMidY = Mathf.Lerp(doorY1, doorY2, 0.5f);
+        float corridorMidX = (r1.xMax + r2.xMin) * 0.5f;
+
+        return new Vector2[]
+        {
+            new Vector2(r1.xMax + 0.5f, doorY1),          // exit door
+            new Vector2(corridorMidX, corridorMidY),       // corridor center
+            new Vector2(r2.xMin + 1f, doorY2)              // entry door
+        };
+    }
+
+    /// <summary>
+    /// Returns the inner walkable rectangle for a room (with wall margin).
+    /// Used for combat boundary clamping so characters never drift into walls.
+    /// </summary>
+    public Rect GetInnerRoomBounds(int roomIndex)
+    {
+        if (roomIndex < 0 || roomIndex >= rooms.Count) return new Rect();
+
+        var b = rooms[roomIndex].bounds;
+        float margin = 0.8f;
+        return new Rect(
+            b.xMin + margin,
+            b.yMin + margin,
+            b.width - margin * 2f,
+            b.height - margin * 2f
+        );
+    }
+
+    /// <summary>
+    /// Generates BoxCollider2D on all room perimeter walls.
+    /// Acts as a physics safety net to prevent any character from clipping through.
+    /// </summary>
+    void GenerateWallColliders()
+    {
+        foreach (var room in rooms)
+        {
+            var b = room.bounds;
+            float wallThickness = 1f;
+
+            // Top wall
+            CreateWallCollider($"WallCol_Top_{room.index}",
+                new Vector2(b.x + b.width * 0.5f, b.yMax + wallThickness * 0.5f),
+                new Vector2(b.width + 2f, wallThickness));
+
+            // Bottom wall
+            CreateWallCollider($"WallCol_Bot_{room.index}",
+                new Vector2(b.x + b.width * 0.5f, b.yMin - wallThickness * 0.5f),
+                new Vector2(b.width + 2f, wallThickness));
+
+            // Left wall (leave door opening if not room 0)
+            if (room.index > 0)
+            {
+                float doorY = b.y + b.height * 0.5f;
+                float doorBottom = doorY - corridorWidth * 0.5f;
+                float doorTop = doorY + corridorWidth * 0.5f;
+
+                float topH = b.yMax - doorTop;
+                if (topH > 0.1f)
+                {
+                    CreateWallCollider($"WallCol_LeftTop_{room.index}",
+                        new Vector2(b.xMin - wallThickness * 0.5f, doorTop + topH * 0.5f),
+                        new Vector2(wallThickness, topH));
+                }
+
+                float botH = doorBottom - b.yMin;
+                if (botH > 0.1f)
+                {
+                    CreateWallCollider($"WallCol_LeftBot_{room.index}",
+                        new Vector2(b.xMin - wallThickness * 0.5f, b.yMin + botH * 0.5f),
+                        new Vector2(wallThickness, botH));
+                }
+            }
+            else
+            {
+                CreateWallCollider($"WallCol_Left_{room.index}",
+                    new Vector2(b.xMin - wallThickness * 0.5f, b.y + b.height * 0.5f),
+                    new Vector2(wallThickness, b.height + 2f));
+            }
+
+            // Right wall (leave door opening if not last room)
+            if (room.index < rooms.Count - 1)
+            {
+                float doorY = b.y + b.height * 0.5f;
+                float doorBottom = doorY - corridorWidth * 0.5f;
+                float doorTop = doorY + corridorWidth * 0.5f;
+
+                float topH = b.yMax - doorTop;
+                if (topH > 0.1f)
+                {
+                    CreateWallCollider($"WallCol_RightTop_{room.index}",
+                        new Vector2(b.xMax + wallThickness * 0.5f, doorTop + topH * 0.5f),
+                        new Vector2(wallThickness, topH));
+                }
+
+                float botH = doorBottom - b.yMin;
+                if (botH > 0.1f)
+                {
+                    CreateWallCollider($"WallCol_RightBot_{room.index}",
+                        new Vector2(b.xMax + wallThickness * 0.5f, b.yMin + botH * 0.5f),
+                        new Vector2(wallThickness, botH));
+                }
+            }
+            else
+            {
+                CreateWallCollider($"WallCol_Right_{room.index}",
+                    new Vector2(b.xMax + wallThickness * 0.5f, b.y + b.height * 0.5f),
+                    new Vector2(wallThickness, b.height + 2f));
+            }
+        }
+
+        // Corridor walls (top and bottom of corridor passages)
+        for (int i = 0; i < rooms.Count - 1; i++)
+        {
+            var r1 = rooms[i].bounds;
+            var r2 = rooms[i + 1].bounds;
+
+            float corrStartX = r1.xMax;
+            float corrEndX = r2.xMin;
+            float corrWidth = corrEndX - corrStartX;
+            float corrMidX = corrStartX + corrWidth * 0.5f;
+            float corrY = Mathf.Lerp(
+                r1.y + r1.height * 0.5f,
+                r2.y + r2.height * 0.5f,
+                0.5f);
+            float halfCorrH = corridorWidth * 0.5f;
+
+            // Top corridor wall
+            CreateWallCollider($"CorrWallCol_Top_{i}",
+                new Vector2(corrMidX, corrY + halfCorrH + 0.5f),
+                new Vector2(corrWidth, 1f));
+
+            // Bottom corridor wall
+            CreateWallCollider($"CorrWallCol_Bot_{i}",
+                new Vector2(corrMidX, corrY - halfCorrH - 0.5f),
+                new Vector2(corrWidth, 1f));
+        }
+    }
+
+    void CreateWallCollider(string name, Vector2 position, Vector2 size)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = new Vector3(position.x, position.y, 0f);
+        go.isStatic = true;
+
+        var col = go.AddComponent<BoxCollider2D>();
+        col.size = size;
+
+        roomVisuals.Add(go); // tracked for cleanup
     }
 }
