@@ -59,6 +59,48 @@ public static class EditorStartScene
     public static void ApplyMobilePlayerSettings()
     {
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
-        Debug.Log("[EditorStartScene] Applied Mobile PlayerSettings: LandscapeLeft orientation enforced.");
+        PlayerSettings.companyName = "DungeonCleaners";
+        PlayerSettings.productName = "Dungeon Cleaners";
+        PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.dungeoncleaners.game");
+        Debug.Log("[EditorStartScene] Applied Mobile PlayerSettings: LandscapeLeft, 60fps, com.dungeoncleaners.game.");
+    }
+
+    [MenuItem("Tools/Dungeon Cleaners/Build Android APK")]
+    public static void BuildAndroidApk()
+    {
+        string buildFolder = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Builds", "Android");
+        if (!System.IO.Directory.Exists(buildFolder)) System.IO.Directory.CreateDirectory(buildFolder);
+        string apkPath = System.IO.Path.Combine(buildFolder, "DungeonCleaners.apk");
+
+        string[] scenes = new string[]
+        {
+            "Assets/Scenes/MainMenu.unity",
+            "Assets/Scenes/SquadBuilder.unity",
+            "Assets/Scenes/Formation.unity",
+            "Assets/Scenes/Combat.unity",
+            "Assets/Scenes/Rewards.unity",
+            "Assets/Scenes/GameOver.unity"
+        };
+
+        BuildPlayerOptions options = new BuildPlayerOptions
+        {
+            scenes = scenes,
+            locationPathName = apkPath,
+            target = BuildTarget.Android,
+            targetGroup = BuildTargetGroup.Android,
+            options = BuildOptions.None
+        };
+
+        Debug.Log($"[Build] Starting Android APK build to: {apkPath}");
+        var report = BuildPipeline.BuildPlayer(options);
+        if (report.summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded)
+        {
+            Debug.Log($"[Build] SUCCESS! APK created at:\n{apkPath}");
+            EditorUtility.RevealInFinder(apkPath);
+        }
+        else
+        {
+            Debug.LogError($"[Build] Android build finished with status: {report.summary.result}");
+        }
     }
 }
