@@ -137,30 +137,41 @@ public static class DungeonCleanersBuilder
 
     private static void BuildGridSlotPrefab()
     {
-        var root = CreateUIRoot("GridSlot", 110, 110);
+        var root = CreateUIRoot("GridSlot", 150, 150);
         var img = root.AddComponent<Image>();
         img.sprite = squareSprite;
-        img.color = new Color(0.2f, 0.22f, 0.28f, 0.9f);
+        img.color = GridSlotUI.EmptyColor;
+
+        // Selection / Outline border
+        var outlineObj = CreateUIRoot("Outline", 150, 150);
+        outlineObj.transform.SetParent(root.transform, false);
+        SetRect(outlineObj.GetComponent<RectTransform>(), 0, 1, 0, 1, 0, 0, 0, 0);
+        var outlineImg = outlineObj.AddComponent<Image>();
+        outlineImg.sprite = squareSprite;
+        outlineImg.color = GridSlotUI.NormalBorder;
+        outlineImg.raycastTarget = false;
 
         root.AddComponent<CanvasGroup>();
         var drag = root.AddComponent<GridSlotDrag>();
         var slotUI = root.AddComponent<GridSlotUI>();
         slotUI.background = img;
+        slotUI.selectionOutline = outlineImg;
 
-        var label = CreateText("HeroLabel", root.transform, "[Slot]", 14, FontStyles.Bold, TextAlignmentOptions.Center);
-        SetRect(label.rectTransform, 0, 1, 0.4f, 1, 0, 0, 0, 0);
+        var label = CreateText("HeroLabel", root.transform, "[Slot]", 16, FontStyles.Bold, TextAlignmentOptions.Center);
+        SetRect(label.rectTransform, 0.05f, 0.95f, 0.45f, 0.95f, 0, 0, 0, 0);
         slotUI.heroLabel = label;
 
-        var hpLabel = CreateText("HPLabel", root.transform, "", 12, FontStyles.Normal, TextAlignmentOptions.Center);
-        SetRect(hpLabel.rectTransform, 0, 1, 0, 0.4f, 0, 0, 0, 0);
+        var hpLabel = CreateText("HPLabel", root.transform, "", 13, FontStyles.Normal, TextAlignmentOptions.Center);
+        SetRect(hpLabel.rectTransform, 0.05f, 0.95f, 0.1f, 0.45f, 0, 0, 0, 0);
         slotUI.hpLabel = hpLabel;
 
-        var warnObj = CreateUIRoot("WarningIcon", 24, 24);
+        var warnObj = CreateUIRoot("WarningIcon", 26, 26);
         warnObj.transform.SetParent(root.transform, false);
-        SetRect(warnObj.GetComponent<RectTransform>(), 1, 1, 1, 1, -15, -15, 24, 24);
+        SetRect(warnObj.GetComponent<RectTransform>(), 1, 1, 1, 1, -16, -16, 26, 26);
         var warnImg = warnObj.AddComponent<Image>();
         warnImg.sprite = circleSprite;
         warnImg.color = Color.red;
+        warnImg.raycastTarget = false;
         var warnText = CreateText("!", warnObj.transform, "!", 16, FontStyles.Bold, TextAlignmentOptions.Center);
         SetRect(warnText.rectTransform, 0, 1, 0, 1, 0, 0, 0, 0);
         slotUI.warningIcon = warnImg;
@@ -407,6 +418,7 @@ public static class DungeonCleanersBuilder
         var backBtn = CreateButton("BackButton", canvas.transform, "< BACK", 16, new Color(0.3f, 0.32f, 0.4f));
         SetRect(backBtn.GetComponent<RectTransform>(), 0, 0, 1, 1, 80, -45, 120, 45);
         ctrl.backButton = backBtn;
+        backBtn.transform.SetAsLastSibling();
 
         var title = CreateText("Title", canvas.transform, "BUILD YOUR SQUAD", 28, FontStyles.Bold, TextAlignmentOptions.Center);
         SetRect(title.rectTransform, 0, 1, 1, 1, 0, -45, 0, 45);
@@ -472,6 +484,7 @@ public static class DungeonCleanersBuilder
         var backBtn = CreateButton("BackButton", canvas.transform, "< BACK", 16, new Color(0.3f, 0.32f, 0.4f));
         SetRect(backBtn.GetComponent<RectTransform>(), 0, 0, 1, 1, 80, -45, 120, 45);
         ctrl.backButton = backBtn;
+        backBtn.transform.SetAsLastSibling();
 
         var title = CreateText("Title", canvas.transform, "PLACE YOUR SQUAD (3x3 TACTICAL GRID)", 26, FontStyles.Bold, TextAlignmentOptions.Center);
         SetRect(title.rectTransform, 0, 1, 1, 1, 0, -45, 0, 45);
@@ -494,43 +507,57 @@ public static class DungeonCleanersBuilder
         bvlg.childAlignment = TextAnchor.UpperCenter;
         ctrl.benchContainer = benchContainer.transform;
 
-        // Center: 3x3 Grid
+        // Center: 3x3 Grid (Enlarged for Mobile)
         var gridRoot = CreatePanel("3x3Grid", canvas.transform, new Color(0.1f, 0.12f, 0.16f, 0.95f));
-        SetRect(gridRoot.GetComponent<RectTransform>(), 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, 400, 400);
+        SetRect(gridRoot.GetComponent<RectTransform>(), 0.5f, 0.5f, 0.5f, 0.5f, -10, 10, 520, 520);
 
         var gridLayout = gridRoot.AddComponent<GridLayoutGroup>();
-        gridLayout.cellSize = new Vector2(110, 110);
-        gridLayout.spacing = new Vector2(15, 15);
+        gridLayout.cellSize = new Vector2(150, 150);
+        gridLayout.spacing = new Vector2(16, 16);
         gridLayout.childAlignment = TextAnchor.MiddleCenter;
         ctrl.gridContainer = gridRoot.transform;
 
-        // Right Sidebar: Hero Stats Panel
-        var statsPanel = CreatePanel("StatsPanel", canvas.transform, new Color(0.12f, 0.14f, 0.2f, 0.9f));
-        SetRect(statsPanel.GetComponent<RectTransform>(), 0.78f, 0.97f, 0.35f, 0.88f, 0, 0, 0, 0);
+        // Right Sidebar: Hero Stats Panel & Tactical Actions
+        var statsPanel = CreatePanel("StatsPanel", canvas.transform, new Color(0.12f, 0.14f, 0.2f, 0.95f));
+        SetRect(statsPanel.GetComponent<RectTransform>(), 0.77f, 0.98f, 0.22f, 0.88f, 0, 0, 0, 0);
         ctrl.statsPanel = statsPanel;
 
-        var statsHeader = CreateText("StatsHeader", statsPanel.transform, "HERO STATS", 20, FontStyles.Bold, TextAlignmentOptions.Center);
-        SetRect(statsHeader.rectTransform, 0, 1, 1, 1, 0, -30, 0, 30);
+        var statsHeader = CreateText("StatsHeader", statsPanel.transform, "HERO DOSSIER", 20, FontStyles.Bold, TextAlignmentOptions.Center);
+        SetRect(statsHeader.rectTransform, 0, 1, 1, 1, 0, -25, 0, 30);
 
         ctrl.statsHeroName = CreateText("HeroName", statsPanel.transform, "Name", 18, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
-        SetRect(ctrl.statsHeroName.rectTransform, 0, 1, 1, 1, 15, -70, -30, 30);
+        SetRect(ctrl.statsHeroName.rectTransform, 0, 1, 1, 1, 15, -60, -30, 26);
 
         ctrl.statsClass = CreateText("Class", statsPanel.transform, "Class: Knight", 15, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
-        SetRect(ctrl.statsClass.rectTransform, 0, 1, 1, 1, 15, -100, -30, 25);
+        SetRect(ctrl.statsClass.rectTransform, 0, 1, 1, 1, 15, -90, -30, 24);
 
         ctrl.statsHP = CreateText("HP", statsPanel.transform, "HP: 85/85", 15, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
-        SetRect(ctrl.statsHP.rectTransform, 0, 1, 1, 1, 15, -130, -30, 25);
+        SetRect(ctrl.statsHP.rectTransform, 0, 1, 1, 1, 15, -118, -30, 24);
 
         ctrl.statsEnergy = CreateText("Energy", statsPanel.transform, "Energy: 110/110", 15, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
-        SetRect(ctrl.statsEnergy.rectTransform, 0, 1, 1, 1, 15, -160, -30, 25);
+        SetRect(ctrl.statsEnergy.rectTransform, 0, 1, 1, 1, 15, -146, -30, 24);
 
         ctrl.statsAttack = CreateText("ATK", statsPanel.transform, "ATK: 18", 15, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
-        SetRect(ctrl.statsAttack.rectTransform, 0, 1, 1, 1, 15, -190, -30, 25);
+        SetRect(ctrl.statsAttack.rectTransform, 0, 1, 1, 1, 15, -174, -30, 24);
+
+        // Tactical Quick Actions in right sidebar
+        var autoDeployBtn = CreateButton("AutoDeployBtn", statsPanel.transform, "AUTO DEPLOY", 13, new Color(0.18f, 0.52f, 0.32f));
+        SetRect(autoDeployBtn.GetComponent<RectTransform>(), 0.08f, 0.92f, 0, 0, 0, 105, 0, 38);
+        ctrl.autoDeployButton = autoDeployBtn;
+
+        var unassignBtn = CreateButton("UnassignBtn", statsPanel.transform, "BENCH HERO", 13, new Color(0.52f, 0.35f, 0.18f));
+        SetRect(unassignBtn.GetComponent<RectTransform>(), 0.08f, 0.92f, 0, 0, 0, 60, 0, 38);
+        ctrl.unassignSelectedButton = unassignBtn;
+
+        var clearBtn = CreateButton("ClearBtn", statsPanel.transform, "CLEAR ALL", 13, new Color(0.55f, 0.2f, 0.2f));
+        SetRect(clearBtn.GetComponent<RectTransform>(), 0.08f, 0.92f, 0, 0, 0, 15, 0, 38);
+        ctrl.clearGridButton = clearBtn;
 
         // Battle Button
-        var battleBtn = CreateButton("BattleButton", canvas.transform, "BATTLE!", 24, new Color(0.85f, 0.2f, 0.2f));
-        SetRect(battleBtn.GetComponent<RectTransform>(), 0.78f, 0.97f, 0, 0, 0, 80, 0, 65);
+        var battleBtn = CreateButton("BattleButton", canvas.transform, "BATTLE!", 22, new Color(0.85f, 0.2f, 0.2f));
+        SetRect(battleBtn.GetComponent<RectTransform>(), 0.77f, 0.98f, 0, 0, 0, 75, 0, 65);
         ctrl.battleButton = battleBtn;
+        battleBtn.transform.SetAsLastSibling();
 
         ctrl.gridSlotPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/Prefabs/GridSlotPrefab.prefab");
         ctrl.benchCardPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/Prefabs/HeroCardPrefab.prefab");
@@ -747,6 +774,7 @@ public static class DungeonCleanersBuilder
         var backBtn = CreateButton("BackButton", canvas.transform, "< BACK", 16, new Color(0.3f, 0.32f, 0.4f));
         SetRect(backBtn.GetComponent<RectTransform>(), 0, 0, 1, 1, 80, -45, 120, 45);
         ctrl.backButton = backBtn;
+        backBtn.transform.SetAsLastSibling();
 
         var title = CreateText("Title", canvas.transform, "ROOM CLEARED! CHOOSE 2 REWARDS", 26, FontStyles.Bold, TextAlignmentOptions.Center);
         title.color = new Color(1f, 0.85f, 0.2f);
@@ -928,7 +956,7 @@ public static class DungeonCleanersBuilder
         return go;
     }
 
-    private static TextMeshProUGUI CreateText(string name, Transform parent, string content, float size, FontStyles style, TextAlignmentOptions align)
+    private static TextMeshProUGUI CreateText(string name, Transform parent, string content, float size, FontStyles style, TextAlignmentOptions align, bool raycastTarget = false)
     {
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(parent, false);
@@ -939,6 +967,7 @@ public static class DungeonCleanersBuilder
         tmp.fontStyle = style;
         tmp.alignment = align;
         tmp.color = Color.white;
+        tmp.raycastTarget = raycastTarget;
         return tmp;
     }
 

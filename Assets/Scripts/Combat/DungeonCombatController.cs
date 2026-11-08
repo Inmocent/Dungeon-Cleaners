@@ -53,6 +53,19 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
     [Header("Room Upgrade Modal")]
     public GameObject roomUpgradeModal;
 
+    [Header("HUD - Reposition (Repo)")]
+    public Button repoButton;
+    public GameObject repoModal;
+    private HeroInstance[] repoFormation = new HeroInstance[9];
+    private GridSlotUI[] repoGridSlots = new GridSlotUI[9];
+    private int repoSelectedSlot = -1;
+    private GameObject repoStatsPanel;
+    private TextMeshProUGUI repoStatsName;
+    private TextMeshProUGUI repoStatsClass;
+    private TextMeshProUGUI repoStatsHP;
+    private TextMeshProUGUI repoStatsEnergy;
+    private TextMeshProUGUI repoStatsATK;
+
     // ---- Runtime State ----
     private List<HeroCombatAgent> heroAgents = new();
     private List<EnemyCombatAgent> enemyAgents = new();
@@ -150,10 +163,13 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         if (speedButton) speedButton.onClick.AddListener(ToggleSpeed);
         if (detailBackBtn) detailBackBtn.onClick.AddListener(CloseDetailPanel);
 
+        SetupRepoButton();
+
         if (pausePanel) pausePanel.SetActive(false);
         if (heroDetailPanel) heroDetailPanel.SetActive(false);
         if (bossHpRoot) bossHpRoot.SetActive(false);
         if (roomUpgradeModal) roomUpgradeModal.SetActive(false);
+        if (repoModal) repoModal.SetActive(false);
     }
 
     // ---- Portrait Panel ----
@@ -762,6 +778,435 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 }
                 onChosen?.Invoke();
             });
+        }
+    }
+
+    // =========================================================================
+    // REPOSITION ("REPO") MODAL
+    // =========================================================================
+    void SetupRepoButton()
+    {
+        if (repoButton == null && pauseButton != null)
+        {
+            // Dynamically create a sleek REPO button next to speed button on HUD
+            var parent = pauseButton.transform.parent;
+            if (parent != null)
+            {
+                var go = new GameObject("RepoButton", typeof(RectTransform));
+                go.transform.SetParent(parent, false);
+
+                var rt = go.GetComponent<RectTransform>();
+                rt.anchorMin = new Vector2(1f, 1f);
+                rt.anchorMax = new Vector2(1f, 1f);
+                rt.anchoredPosition = new Vector2(-205f, -45f);
+                rt.sizeDelta = new Vector2(65f, 45f);
+
+                var img = go.AddComponent<Image>();
+                img.color = new Color(0.22f, 0.45f, 0.85f, 0.95f);
+
+                repoButton = go.AddComponent<Button>();
+
+                var textGo = new GameObject("Label", typeof(RectTransform));
+                textGo.transform.SetParent(go.transform, false);
+                var textRt = textGo.GetComponent<RectTransform>();
+                textRt.anchorMin = Vector2.zero;
+                textRt.anchorMax = Vector2.one;
+                textRt.sizeDelta = Vector2.zero;
+
+                var tmp = textGo.AddComponent<TextMeshProUGUI>();
+                tmp.text = "<b>REPO</b>";
+                tmp.fontSize = 15;
+                tmp.alignment = TextAlignmentOptions.Center;
+                tmp.color = Color.white;
+                tmp.raycastTarget = false;
+            }
+        }
+
+        if (repoButton != null)
+        {
+            repoButton.onClick.AddListener(OpenRepositionModal);
+        }
+    }
+
+    public void OpenRepositionModal()
+    {
+        isPaused = true;
+        Time.timeScale = 0f;
+
+        if (repoModal == null)
+        {
+            BuildRepoModal();
+        }
+
+        // Copy current formation
+        if (GameRunData.Instance != null)
+        {
+            repoFormation = (HeroInstance[])GameRunData.Instance.formation.Clone();
+        }
+
+        repoSelectedSlot = -1;
+        if (repoStatsPanel != null) repoStatsPanel.SetActive(false);
+        repoModal.SetActive(true);
+        RefreshRepoGrid();
+    }
+
+    void BuildRepoModal()
+    {
+        var canvas = FindAnyObjectByType<Canvas>();
+        if (canvas == null) return;
+
+        repoModal = new GameObject("RepoModal", typeof(RectTransform));
+        repoModal.transform.SetParent(canvas.transform, false);
+        repoModal.transform.SetAsLastSibling();
+
+        var rt = repoModal.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+
+        var bg = repoModal.AddComponent<Image>();
+        bg.color = new Color(0.04f, 0.05f, 0.08f, 0.92f);
+
+        // Header Title
+        var titleGo = new GameObject("RepoTitle", typeof(RectTransform));
+        titleGo.transform.SetParent(repoModal.transform, false);
+        var titleTmp = titleGo.AddComponent<TextMeshProUGUI>();
+        titleTmp.text = "TACTICAL REPOSITION\n<size=15><color=#94A3B8>Tap two slots to swap hero positions in current room</color></size>";
+        titleTmp.fontSize = 24;
+        titleTmp.fontStyle = FontStyles.Bold;
+        titleTmp.alignment = TextAlignmentOptions.Center;
+        titleTmp.raycastTarget = false;
+        var titleRt = titleGo.GetComponent<RectTransform>();
+        titleRt.anchorMin = new Vector2(0.1f, 0.88f);
+        titleRt.anchorMax = new Vector2(0.9f, 0.98f);
+        titleRt.offsetMin = Vector2.zero;
+        titleRt.offsetMax = Vector2.zero;
+
+        // 3x3 Grid Container (Center-Left)
+        var gridRoot = new GameObject("Repo3x3Grid", typeof(RectTransform));
+        gridRoot.transform.SetParent(repoModal.transform, false);
+        var gridRt = gridRoot.GetComponent<RectTransform>();
+        gridRt.anchorMin = new Vector2(0.5f, 0.5f);
+        gridRt.anchorMax = new Vector2(0.5f, 0.5f);
+        gridRt.anchoredPosition = new Vector2(-120f, -20f);
+        gridRt.sizeDelta = new Vector2(480f, 480f);
+
+        var gridBg = gridRoot.AddComponent<Image>();
+        gridBg.color = new Color(0.08f, 0.1f, 0.14f, 0.9f);
+
+        var gridLayout = gridRoot.AddComponent<GridLayoutGroup>();
+        gridLayout.cellSize = new Vector2(140f, 140f);
+        gridLayout.spacing = new Vector2(14f, 14f);
+        gridLayout.childAlignment = TextAnchor.MiddleCenter;
+
+        // Build 9 Grid Slots
+        for (int i = 0; i < 9; i++)
+        {
+            int slotIdx = i;
+            var slotGo = new GameObject($"RepoSlot_{i}", typeof(RectTransform));
+            slotGo.transform.SetParent(gridRoot.transform, false);
+
+            var slotImg = slotGo.AddComponent<Image>();
+            slotImg.color = GridSlotUI.EmptyColor;
+
+            var slotUI = slotGo.AddComponent<GridSlotUI>();
+            slotUI.background = slotImg;
+
+            var labelGo = new GameObject("HeroLabel", typeof(RectTransform));
+            labelGo.transform.SetParent(slotGo.transform, false);
+            var labelRt = labelGo.GetComponent<RectTransform>();
+            labelRt.anchorMin = new Vector2(0.05f, 0.45f);
+            labelRt.anchorMax = new Vector2(0.95f, 0.95f);
+            labelRt.offsetMin = Vector2.zero;
+            labelRt.offsetMax = Vector2.zero;
+
+            var labelTmp = labelGo.AddComponent<TextMeshProUGUI>();
+            labelTmp.fontSize = 15;
+            labelTmp.fontStyle = FontStyles.Bold;
+            labelTmp.alignment = TextAlignmentOptions.Center;
+            labelTmp.raycastTarget = false;
+            slotUI.heroLabel = labelTmp;
+
+            var hpGo = new GameObject("HPLabel", typeof(RectTransform));
+            hpGo.transform.SetParent(slotGo.transform, false);
+            var hpRt = hpGo.GetComponent<RectTransform>();
+            hpRt.anchorMin = new Vector2(0.05f, 0.1f);
+            hpRt.anchorMax = new Vector2(0.95f, 0.45f);
+            hpRt.offsetMin = Vector2.zero;
+            hpRt.offsetMax = Vector2.zero;
+
+            var hpTmp = hpGo.AddComponent<TextMeshProUGUI>();
+            hpTmp.fontSize = 13;
+            hpTmp.alignment = TextAlignmentOptions.Center;
+            hpTmp.raycastTarget = false;
+            slotUI.hpLabel = hpTmp;
+
+            slotUI.Setup(slotIdx, null, OnRepoSlotTapped, OnRepoSlotDrop);
+            repoGridSlots[i] = slotUI;
+        }
+
+        // Right-Side Hero Details Window Option
+        repoStatsPanel = new GameObject("RepoStatsPanel", typeof(RectTransform));
+        repoStatsPanel.transform.SetParent(repoModal.transform, false);
+        var statsRt = repoStatsPanel.GetComponent<RectTransform>();
+        statsRt.anchorMin = new Vector2(0.72f, 0.22f);
+        statsRt.anchorMax = new Vector2(0.96f, 0.85f);
+        statsRt.offsetMin = Vector2.zero;
+        statsRt.offsetMax = Vector2.zero;
+
+        var statsBg = repoStatsPanel.AddComponent<Image>();
+        statsBg.color = new Color(0.12f, 0.14f, 0.22f, 0.95f);
+
+        var statsHeader = new GameObject("Header", typeof(RectTransform));
+        statsHeader.transform.SetParent(repoStatsPanel.transform, false);
+        var shTmp = statsHeader.AddComponent<TextMeshProUGUI>();
+        shTmp.text = "HERO DOSSIER";
+        shTmp.fontSize = 18;
+        shTmp.fontStyle = FontStyles.Bold;
+        shTmp.alignment = TextAlignmentOptions.Center;
+        shTmp.color = new Color(1f, 0.85f, 0.2f);
+        shTmp.raycastTarget = false;
+        var shRt = statsHeader.GetComponent<RectTransform>();
+        shRt.anchorMin = new Vector2(0f, 1f);
+        shRt.anchorMax = new Vector2(1f, 1f);
+        shRt.anchoredPosition = new Vector2(0f, -25f);
+        shRt.sizeDelta = new Vector2(0f, 30f);
+
+        repoStatsName = CreateRepoStatText(repoStatsPanel.transform, "Hero Name", -65f, 16, FontStyles.Bold);
+        repoStatsClass = CreateRepoStatText(repoStatsPanel.transform, "Class: -", -95f, 14, FontStyles.Normal);
+        repoStatsHP = CreateRepoStatText(repoStatsPanel.transform, "HP: -", -125f, 14, FontStyles.Normal);
+        repoStatsEnergy = CreateRepoStatText(repoStatsPanel.transform, "Energy: -", -155f, 14, FontStyles.Normal);
+        repoStatsATK = CreateRepoStatText(repoStatsPanel.transform, "ATK: -", -185f, 14, FontStyles.Normal);
+
+        // Unassign Button inside right-side panel
+        var unassignGo = new GameObject("UnassignBtn", typeof(RectTransform));
+        unassignGo.transform.SetParent(repoStatsPanel.transform, false);
+        var unassignRt = unassignGo.GetComponent<RectTransform>();
+        unassignRt.anchorMin = new Vector2(0.1f, 0f);
+        unassignRt.anchorMax = new Vector2(0.9f, 0f);
+        unassignRt.anchoredPosition = new Vector2(0f, 35f);
+        unassignRt.sizeDelta = new Vector2(0f, 40f);
+        var unassignImg = unassignGo.AddComponent<Image>();
+        unassignImg.color = new Color(0.6f, 0.2f, 0.2f, 0.9f);
+        var unassignBtn = unassignGo.AddComponent<Button>();
+        unassignBtn.onClick.AddListener(UnassignRepoSelected);
+
+        var uLabel = new GameObject("Label", typeof(RectTransform));
+        uLabel.transform.SetParent(unassignGo.transform, false);
+        var uLabelRt = uLabel.GetComponent<RectTransform>();
+        uLabelRt.anchorMin = Vector2.zero;
+        uLabelRt.anchorMax = Vector2.one;
+        uLabelRt.sizeDelta = Vector2.zero;
+        var uTmp = uLabel.AddComponent<TextMeshProUGUI>();
+        uTmp.text = "CLEAR SLOT";
+        uTmp.fontSize = 14;
+        uTmp.fontStyle = FontStyles.Bold;
+        uTmp.alignment = TextAlignmentOptions.Center;
+        uTmp.raycastTarget = false;
+
+        // Bottom Action Buttons
+        var confirmGo = new GameObject("ConfirmBtn", typeof(RectTransform));
+        confirmGo.transform.SetParent(repoModal.transform, false);
+        var confirmRt = confirmGo.GetComponent<RectTransform>();
+        confirmRt.anchorMin = new Vector2(0.2f, 0f);
+        confirmRt.anchorMax = new Vector2(0.45f, 0f);
+        confirmRt.anchoredPosition = new Vector2(0f, 45f);
+        confirmRt.sizeDelta = new Vector2(0f, 50f);
+        var cImg = confirmGo.AddComponent<Image>();
+        cImg.color = new Color(0.18f, 0.55f, 0.28f);
+        var confirmBtn = confirmGo.AddComponent<Button>();
+        confirmBtn.onClick.AddListener(ConfirmReposition);
+
+        var cLabel = new GameObject("Label", typeof(RectTransform));
+        cLabel.transform.SetParent(confirmGo.transform, false);
+        var cLabelRt = cLabel.GetComponent<RectTransform>();
+        cLabelRt.anchorMin = Vector2.zero;
+        cLabelRt.anchorMax = Vector2.one;
+        cLabelRt.sizeDelta = Vector2.zero;
+        var cTmp = cLabel.AddComponent<TextMeshProUGUI>();
+        cTmp.text = "APPLY FORMATION";
+        cTmp.fontSize = 18;
+        cTmp.fontStyle = FontStyles.Bold;
+        cTmp.alignment = TextAlignmentOptions.Center;
+        cTmp.raycastTarget = false;
+
+        var cancelGo = new GameObject("CancelBtn", typeof(RectTransform));
+        cancelGo.transform.SetParent(repoModal.transform, false);
+        var cancelRt = cancelGo.GetComponent<RectTransform>();
+        cancelRt.anchorMin = new Vector2(0.52f, 0f);
+        cancelRt.anchorMax = new Vector2(0.72f, 0f);
+        cancelRt.anchoredPosition = new Vector2(0f, 45f);
+        cancelRt.sizeDelta = new Vector2(0f, 50f);
+        var canImg = cancelGo.AddComponent<Image>();
+        canImg.color = new Color(0.4f, 0.42f, 0.5f);
+        var cancelBtn = cancelGo.AddComponent<Button>();
+        cancelBtn.onClick.AddListener(CloseRepositionModal);
+
+        var canLabel = new GameObject("Label", typeof(RectTransform));
+        canLabel.transform.SetParent(cancelGo.transform, false);
+        var canLabelRt = canLabel.GetComponent<RectTransform>();
+        canLabelRt.anchorMin = Vector2.zero;
+        canLabelRt.anchorMax = Vector2.one;
+        canLabelRt.sizeDelta = Vector2.zero;
+        var canTmp = canLabel.AddComponent<TextMeshProUGUI>();
+        canTmp.text = "CANCEL";
+        canTmp.fontSize = 18;
+        canTmp.fontStyle = FontStyles.Bold;
+        canTmp.alignment = TextAlignmentOptions.Center;
+        canTmp.raycastTarget = false;
+    }
+
+    TextMeshProUGUI CreateRepoStatText(Transform parent, string defaultText, float posY, float fontSize, FontStyles style)
+    {
+        var go = new GameObject("Stat", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = defaultText;
+        tmp.fontSize = fontSize;
+        tmp.fontStyle = style;
+        tmp.alignment = TextAlignmentOptions.MidlineLeft;
+        tmp.raycastTarget = false;
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.anchoredPosition = new Vector2(18f, posY);
+        rt.sizeDelta = new Vector2(-36f, 25f);
+        return tmp;
+    }
+
+    void RefreshRepoGrid()
+    {
+        for (int i = 0; i < 9; i++)
+        {
+            if (repoGridSlots[i] != null)
+            {
+                repoGridSlots[i].Setup(i, repoFormation[i], OnRepoSlotTapped, OnRepoSlotDrop);
+            }
+        }
+    }
+
+    void OnRepoSlotTapped(int slotIndex)
+    {
+        if (repoSelectedSlot == -1)
+        {
+            if (repoFormation[slotIndex] != null)
+            {
+                repoSelectedSlot = slotIndex;
+                repoGridSlots[slotIndex].SetSelected(true);
+                ShowRepoStats(repoFormation[slotIndex]);
+            }
+            else
+            {
+                if (repoStatsPanel != null) repoStatsPanel.SetActive(false);
+            }
+        }
+        else if (repoSelectedSlot == slotIndex)
+        {
+            ClearRepoSelection();
+            if (repoStatsPanel != null) repoStatsPanel.SetActive(false);
+        }
+        else
+        {
+            SwapRepoSlots(repoSelectedSlot, slotIndex);
+            ClearRepoSelection();
+        }
+    }
+
+    void OnRepoSlotDrop(int fromSlot, int toSlot)
+    {
+        SwapRepoSlots(fromSlot, toSlot);
+        ClearRepoSelection();
+    }
+
+    void SwapRepoSlots(int from, int to)
+    {
+        var tmp = repoFormation[to];
+        repoFormation[to] = repoFormation[from];
+        repoFormation[from] = tmp;
+
+        if (repoFormation[from] != null) repoFormation[from].gridIndex = from;
+        if (repoFormation[to] != null) repoFormation[to].gridIndex = to;
+
+        RefreshRepoGrid();
+    }
+
+    void ClearRepoSelection()
+    {
+        if (repoSelectedSlot >= 0 && repoSelectedSlot < repoGridSlots.Length)
+        {
+            if (repoGridSlots[repoSelectedSlot] != null)
+            {
+                repoGridSlots[repoSelectedSlot].SetSelected(false);
+            }
+        }
+        repoSelectedSlot = -1;
+    }
+
+    void ShowRepoStats(HeroInstance hero)
+    {
+        if (repoStatsPanel != null) repoStatsPanel.SetActive(true);
+        if (repoStatsName) repoStatsName.text = hero.displayName;
+        if (repoStatsClass) repoStatsClass.text = $"Class: {hero.data.heroClass}";
+        if (repoStatsHP) repoStatsHP.text = $"HP: {hero.currentHP}/{hero.data.maxHP}";
+        if (repoStatsEnergy) repoStatsEnergy.text = $"Energy: {hero.currentEnergy}/{hero.data.maxEnergy}";
+        if (repoStatsATK) repoStatsATK.text = $"ATK: {hero.data.attackDamage}";
+    }
+
+    void UnassignRepoSelected()
+    {
+        if (repoSelectedSlot < 0 || repoSelectedSlot >= 9) return;
+        repoFormation[repoSelectedSlot] = null;
+        RefreshRepoGrid();
+        ClearRepoSelection();
+        if (repoStatsPanel != null) repoStatsPanel.SetActive(false);
+    }
+
+    public void ConfirmReposition()
+    {
+        if (GameRunData.Instance != null)
+        {
+            GameRunData.Instance.formation = (HeroInstance[])repoFormation.Clone();
+        }
+
+        RepositionLivingHeroesInRoom();
+
+        if (repoModal != null) repoModal.SetActive(false);
+        isPaused = false;
+        Time.timeScale = isDoubleSpeed ? 2f : 1f;
+
+        if (mainCamera != null)
+        {
+            CombatFeedback.Instance.ShowText(mainCamera.transform.position + Vector3.forward * 10f, "FORMATION UPDATED!", Color.cyan, 3.5f);
+        }
+    }
+
+    public void CloseRepositionModal()
+    {
+        if (repoModal != null) repoModal.SetActive(false);
+        isPaused = false;
+        Time.timeScale = isDoubleSpeed ? 2f : 1f;
+    }
+
+    void RepositionLivingHeroesInRoom()
+    {
+        if (GameRunData.Instance == null || heroAgents == null) return;
+        Vector2 roomCenter = dungeonGenerator != null ? dungeonGenerator.GetRoomCenter(currentRoomIndex) : Vector2.zero;
+
+        foreach (var agent in heroAgents)
+        {
+            if (agent == null || !agent.IsAlive || agent.heroInstance == null) continue;
+            int newIdx = System.Array.IndexOf(GameRunData.Instance.formation, agent.heroInstance);
+            if (newIdx >= 0)
+            {
+                agent.UpdateFormationSlot(newIdx);
+                int col = newIdx % 3; // 0=back, 1=mid, 2=front
+                int row = newIdx / 3; // 0=top, 1=mid, 2=bot
+                float offsetX = (col - 1) * 0.75f - 1.2f;
+                float offsetY = (1 - row) * 0.75f;
+                Vector2 targetPos = roomCenter + new Vector2(offsetX, offsetY);
+                agent.MoveTo(targetPos);
+            }
         }
     }
 

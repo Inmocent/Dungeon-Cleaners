@@ -39,6 +39,15 @@ public class HeroCombatAgent : MonoBehaviour
     public bool IsAlive => heroInstance != null && heroInstance.isAlive;
     public HeroClass HeroClass => heroInstance?.data.heroClass ?? HeroClass.Knight;
 
+    public void UpdateFormationSlot(int newSlotIdx)
+    {
+        gridIndex = newSlotIdx;
+        if (heroInstance != null)
+        {
+            heroInstance.gridIndex = newSlotIdx;
+        }
+    }
+
     public void Init(HeroInstance hero, int slotIdx, ICombatController ctrl)
     {
         heroInstance = hero;
