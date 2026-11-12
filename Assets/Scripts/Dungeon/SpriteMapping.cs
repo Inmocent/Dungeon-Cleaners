@@ -15,6 +15,20 @@ public static class SpriteMapping
         { "Mage Rowan", "wizzard_m" },
         { "Mage Vesper", "wizzard_f" },
         { "Healer Lynne", "elf_f" },
+        // Mercenary & Special Operatives
+        { "Doc Vance", "doc" },
+        { "Sister Teresa", "angel" },
+        { "Ronin Silas", "dwarf_m" },
+        { "Thora Ironclad", "dwarf_f" },
+        { "Pyromancer Jax", "wogol" },
+        { "Gladiator Brutus", "orc_warrior" },
+        { "Vespera Void", "lizard_f" },
+        { "Monk Cedric", "doc" },
+        { "Jack the Brawler", "pumpkin_dude" },
+        { "Kaelen Shadowstep", "elf_m" },
+        { "Gorzog Hex-Weaver", "orc_shaman" },
+        { "Saurian Skirmisher", "lizard_m" },
+        { "Masked Marauder", "masked_orc" }
     };
 
     // Enemy types available for spawning
@@ -22,12 +36,26 @@ public static class SpriteMapping
     public static readonly string[] bossEnemyPrefixes = { "big_demon" };
 
     /// <summary>
-    /// Get the sprite prefix for a hero by their name.
+    /// Register or override a hero's sprite prefix at runtime.
+    /// </summary>
+    public static void RegisterHero(string heroName, string spritePrefix)
+    {
+        if (!string.IsNullOrEmpty(heroName) && !string.IsNullOrEmpty(spritePrefix))
+        {
+            heroSpriteMap[heroName] = spritePrefix;
+        }
+    }
+
+    /// <summary>
+    /// Get the sprite prefix for a hero by their name and optional explicit prefix.
     /// Returns a fallback if not found.
     /// </summary>
-    public static string GetHeroSpritePrefix(string heroName)
+    public static string GetHeroSpritePrefix(string heroName, string explicitPrefix = null)
     {
-        if (heroSpriteMap.TryGetValue(heroName, out var prefix))
+        if (!string.IsNullOrEmpty(explicitPrefix))
+            return explicitPrefix;
+
+        if (!string.IsNullOrEmpty(heroName) && heroSpriteMap.TryGetValue(heroName, out var prefix))
             return prefix;
 
         // Fallback based on class

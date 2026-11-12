@@ -11,6 +11,7 @@ public class HeroData : ScriptableObject
     public float attackSpeed;
     public float moveSpeed;
     public Color classColor;
+    public string spritePrefix;
 
     [TextArea]
     public string description;

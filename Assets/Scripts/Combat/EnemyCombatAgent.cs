@@ -1,10 +1,17 @@
 using UnityEngine;
 using System.Collections;
 
+public enum EnemyArchetype
+{
+    StandardMelee,
+    Boss,
+    Necromancer
+}
+
 /// <summary>
 /// Enemy AI with animated sprites.
 /// Moves toward nearest hero and attacks. Spawns within a specific dungeon room.
-/// Supports regular enemies (skeletons, goblins) and bosses.
+/// Supports regular enemies (skeletons, goblins), necromancer spawners, and bosses.
 /// </summary>
 [RequireComponent(typeof(SpriteRenderer))]
 public class EnemyCombatAgent : MonoBehaviour
@@ -13,8 +20,17 @@ public class EnemyCombatAgent : MonoBehaviour
     private CharacterAnimator animator;
     private SpriteRenderer sr;
     private bool isBoss;
+    public bool IsBoss => isBoss;
     private float attackTimer;
     private int roomIndex;  // which room this enemy belongs to
+    private bool isTelegraphing;
+    private int bossAttackCounter;
+
+    // Necromancer fields
+    public EnemyArchetype Archetype { get; private set; } = EnemyArchetype.StandardMelee;
+    private float summonTimer = 4.0f;
+    private int summonedCount = 0;
+    private const int MAX_NECRO_SUMMONS = 3;
 
     public int maxHP;
     public int currentHP;
@@ -25,19 +41,45 @@ public class EnemyCombatAgent : MonoBehaviour
 
     public bool IsAlive => currentHP > 0;
     public int RoomIndex => roomIndex;
+    public bool IsElite { get; private set; }
 
-    public void Init(bool boss, ICombatController ctrl, int roomIdx = 0)
+    public void ApplyModifiers(float hpMult, float dmgMult, bool elite = false)
+    {
+        IsElite = elite;
+        maxHP = Mathf.Max(1, Mathf.RoundToInt(maxHP * hpMult));
+        currentHP = maxHP;
+        attackDamage = Mathf.Max(1, Mathf.RoundToInt(attackDamage * dmgMult));
+
+        if (elite)
+        {
+            transform.localScale = Vector3.one * 1.55f;
+            if (sr != null)
+            {
+                sr.color = new Color(1f, 0.65f, 0.75f, 1f); // Elite champion crimson tint
+            }
+        }
+    }
+
+    public void Init(bool boss, ICombatController ctrl, int roomIdx = 0, EnemyArchetype archetype = EnemyArchetype.StandardMelee)
     {
         isBoss = boss;
         combat = ctrl;
         roomIndex = roomIdx;
+        Archetype = boss ? EnemyArchetype.Boss : archetype;
 
         if (boss)
         {
             maxHP = 500;
             attackDamage = 25;
             moveSpeed = 0.8f;
-            attackRange = 1.5f;
+            attackRange = 1.8f;
+        }
+        else if (Archetype == EnemyArchetype.Necromancer)
+        {
+            maxHP = 85;
+            attackDamage = 10;
+            moveSpeed = 1.4f;
+            attackRange = 4.2f;
         }
         else
         {
@@ -54,13 +96,17 @@ public class EnemyCombatAgent : MonoBehaviour
         animator = gameObject.AddComponent<CharacterAnimator>();
         string spritePrefix = boss ?
             SpriteMapping.GetBossPrefix() :
-            SpriteMapping.GetRandomEnemyPrefix();
+            (Archetype == EnemyArchetype.Necromancer ? "necromancer" : SpriteMapping.GetRandomEnemyPrefix());
 
         animator.SetupEnemy(spritePrefix);
 
         if (boss)
         {
             transform.localScale = Vector3.one * 2f;
+        }
+        else if (Archetype == EnemyArchetype.Necromancer)
+        {
+            transform.localScale = Vector3.one * 1.35f;
         }
         else
         {
@@ -81,13 +127,20 @@ public class EnemyCombatAgent : MonoBehaviour
 
     void Update()
     {
-        if (!IsAlive || combat == null || combat.IsPaused) return;
+        if (!IsAlive || combat == null || combat.IsPaused || isTelegraphing) return;
         if (!combat.IsInCombatPhase) return;
 
         var target = FindNearestHero();
         if (target == null)
         {
             animator.SetState(CharacterAnimator.AnimState.Idle);
+            return;
+        }
+
+        if (Archetype == EnemyArchetype.Necromancer)
+        {
+            HandleNecromancerCombat(target);
+            ClampToRoomBounds();
             return;
         }
 
@@ -107,15 +160,147 @@ public class EnemyCombatAgent : MonoBehaviour
             if (attackTimer <= 0f)
             {
                 attackTimer = 1f / attackSpeed;
-                target.TakeDamage(attackDamage);
 
-                // Attack lunge
+                if (isBoss)
+                {
+                    bossAttackCounter++;
+                    if (bossAttackCounter % 3 == 0)
+                    {
+                        StartCoroutine(BossHeavySlamTelegraph(target));
+                        return;
+                    }
+                }
+
+                target.TakeDamage(attackDamage);
                 StartCoroutine(AttackLunge(target.transform.position));
+            CombatCameraController.Instance?.AddTrauma(0.55f);
             }
         }
 
         // Keep enemy inside the room boundaries
         ClampToRoomBounds();
+    }
+
+    // ---- Necromancer AI: Kites heroes and channels skeleton summoning spell ----
+    void HandleNecromancerCombat(HeroCombatAgent target)
+    {
+        float dist = Vector2.Distance(transform.position, target.transform.position);
+        Vector2 toTarget = ((Vector2)target.transform.position - (Vector2)transform.position).normalized;
+
+        // 1. Kite away if heroes get uncomfortably close
+        if (dist < 2.6f)
+        {
+            Vector2 awayDir = ((Vector2)transform.position - (Vector2)target.transform.position).normalized;
+            transform.position += (Vector3)(awayDir * (moveSpeed * 1.15f) * Time.deltaTime);
+            animator.SetState(CharacterAnimator.AnimState.Run);
+            animator.SetFacing(toTarget.x >= 0);
+        }
+        else if (dist > 5.5f)
+        {
+            transform.position += (Vector3)(toTarget * moveSpeed * Time.deltaTime);
+            animator.SetState(CharacterAnimator.AnimState.Run);
+            animator.SetFacing(toTarget.x >= 0);
+        }
+        else
+        {
+            animator.SetState(CharacterAnimator.AnimState.Idle);
+            animator.SetFacing(toTarget.x >= 0);
+        }
+
+        // 2. Summoning spell channel
+        summonTimer -= Time.deltaTime;
+        if (summonTimer <= 0f && summonedCount < MAX_NECRO_SUMMONS)
+        {
+            summonTimer = 6.0f;
+            SpawnNecroMinion();
+        }
+
+        // 3. Shadow bolt projectile
+        attackTimer -= Time.deltaTime;
+        if (attackTimer <= 0f && dist <= attackRange)
+        {
+            attackTimer = 2.2f;
+            CastShadowBolt(target);
+        }
+    }
+
+    void SpawnNecroMinion()
+    {
+        if (transform.parent == null) return;
+        var go = new GameObject($"NecroMinion_{summonedCount}");
+        go.transform.SetParent(transform.parent, false);
+
+        var spriteRenderer = go.AddComponent<SpriteRenderer>();
+        spriteRenderer.sortingOrder = 10;
+
+        var minion = go.AddComponent<EnemyCombatAgent>();
+        minion.Init(false, combat, roomIndex, EnemyArchetype.StandardMelee);
+        minion.maxHP = 35;
+        minion.currentHP = 35;
+        minion.attackDamage = 9;
+
+        Vector2 spawnPos = (Vector2)transform.position + new Vector2(Random.Range(-0.8f, 0.8f), Random.Range(-0.8f, 0.8f));
+        go.transform.position = spawnPos;
+
+        combat?.EnemyAgents.Add(minion);
+        CombatFeedback.Instance?.ShowText(transform.position, "RISE, MY MINION! ☠", new Color(0.7f, 0.25f, 0.95f), 3.2f);
+        summonedCount++;
+    }
+
+    void CastShadowBolt(HeroCombatAgent target)
+    {
+        int dmg = attackDamage;
+        CombatProjectile.Spawn(
+            transform.position,
+            target.transform,
+            new Color(0.65f, 0.2f, 0.95f), // shadow violet bolt
+            7.5f,
+            () =>
+            {
+                if (target != null && target.IsAlive)
+                {
+                    target.TakeDamage(dmg);
+                }
+            },
+            0.55f
+        );
+    }
+
+    IEnumerator BossHeavySlamTelegraph(HeroCombatAgent target)
+    {
+        isTelegraphing = true;
+        animator?.SetState(CharacterAnimator.AnimState.Idle);
+
+        // Flash bright red warning and show telegraph text
+        CombatFeedback.Instance?.ShowText(transform.position + Vector3.up * 1.4f, "⚠ HEAVY SLAM! ⚠", new Color(1f, 0.15f, 0.15f), 2.0f);
+        if (sr != null) sr.color = new Color(1f, 0.25f, 0.25f);
+
+        // Telegraph charge-up pause (0.7s)
+        yield return new WaitForSeconds(0.7f);
+
+        if (sr != null) sr.color = Color.white;
+        isTelegraphing = false;
+
+        if (IsAlive && target != null)
+        {
+            float slamRadius = 2.4f;
+            int heavyDmg = Mathf.RoundToInt(attackDamage * 1.8f);
+
+            StartCoroutine(AttackLunge(target.transform.position));
+            CombatCameraController.Instance?.AddTrauma(0.55f);
+
+            if (combat?.HeroAgents != null)
+            {
+                foreach (var h in combat.HeroAgents)
+                {
+                    if (h != null && h.IsAlive && Vector2.Distance(transform.position, h.transform.position) <= slamRadius)
+                    {
+                        h.TakeDamage(heavyDmg);
+                        CombatFeedback.Instance?.ShowText(h.transform.position, $"-{heavyDmg} 💥", new Color(1f, 0.15f, 0.15f), 3.5f);
+                    }
+                }
+            }
+        }
     }
 
     HeroCombatAgent FindNearestHero()

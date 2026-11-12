@@ -6,7 +6,7 @@ using TMPro;
 /// <summary>Circular portrait in the combat bottom panel.</summary>
 public class PortraitUI : MonoBehaviour, IPointerClickHandler
 {
-    public Image portraitCircle;           // tinted by class color
+    public Image portraitCircle;           // hero sprite / class color
     public TextMeshProUGUI nameLabel;
     public Slider hpBar;
     public Slider energyBar;
@@ -29,7 +29,10 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
         hero = h;
         onTap = tapCb;
 
-        string prefix = SpriteMapping.GetHeroSpritePrefix(h.data.heroName);
+        if (hero == null || hero.data == null) return;
+        if (hero.upgrades == null) hero.upgrades = new();
+
+        string prefix = SpriteMapping.GetHeroSpritePrefix(hero.data.heroName, hero.data.spritePrefix);
         var heroSprite = SpriteCache.LoadSprite($"{prefix}_idle_anim_f0");
         if (portraitCircle)
         {
@@ -41,20 +44,21 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
             }
             else
             {
-                portraitCircle.color = h.data.classColor;
+                portraitCircle.color = hero.data.classColor;
             }
         }
-        if (nameLabel) nameLabel.text = h.displayName;
+
+        if (nameLabel) nameLabel.text = hero.displayName ?? hero.data.heroName;
 
         if (hpBar)
         {
-            hpBar.maxValue = h.data.maxHP;
-            hpBar.value = h.currentHP;
+            hpBar.maxValue = hero.data.maxHP;
+            hpBar.value = hero.currentHP;
         }
         if (energyBar)
         {
-            energyBar.maxValue = h.data.maxEnergy;
-            energyBar.value = h.currentEnergy;
+            energyBar.maxValue = hero.data.maxEnergy;
+            energyBar.value = hero.currentEnergy;
         }
 
         if (hpLabel == null && hpBar != null)
@@ -71,7 +75,8 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
 
     public void Refresh()
     {
-        if (hero == null) return;
+        if (hero == null || hero.data == null) return;
+        if (hero.upgrades == null) hero.upgrades = new();
 
         if (hpBar) hpBar.value = hero.currentHP;
         if (energyBar) energyBar.value = hero.currentEnergy;
@@ -79,7 +84,7 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
 
         // HP color: green when ok, red when < 30%
         if (hpFill)
-            hpFill.color = ((float)hero.currentHP / hero.data.maxHP) < 0.3f ? HP_LOW_COLOR : HP_COLOR;
+            hpFill.color = ((float)hero.currentHP / Mathf.Max(1, hero.data.maxHP)) < 0.3f ? HP_LOW_COLOR : HP_COLOR;
 
         bool fatigued = hero.isFatigued;
         if (fatiguedLabel) fatiguedLabel.gameObject.SetActive(fatigued);
@@ -106,29 +111,39 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
     {
         if (upgradesBadgeLabel != null) return;
 
-        var existing = transform.Find("UpgradesBadge");
+        var existing = transform.Find("UpgradesBadge") ?? transform.Find("BadgeText");
         if (existing != null)
         {
             upgradesBadgeLabel = existing.GetComponent<TextMeshProUGUI>();
-            return;
+            if (upgradesBadgeLabel != null) return;
         }
 
-        // Auto-create badge row if not in serialized prefab
-        var badgeObj = new GameObject("UpgradesBadge");
-        badgeObj.transform.SetParent(transform, false);
+        try
+        {
+            // Auto-create badge row if not in serialized prefab
+            var badgeObj = new GameObject("UpgradesBadge");
+            badgeObj.transform.SetParent(transform, false);
 
-        var rt = badgeObj.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0f, 0f);
-        rt.anchorMax = new Vector2(1f, 0f);
-        rt.anchoredPosition = new Vector2(0f, 57f);
-        rt.sizeDelta = new Vector2(0f, 15f);
+            var rt = badgeObj.AddComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 0f);
+            rt.anchorMax = new Vector2(1f, 0f);
+            rt.anchoredPosition = new Vector2(0f, 57f);
+            rt.sizeDelta = new Vector2(0f, 15f);
 
-        upgradesBadgeLabel = badgeObj.AddComponent<TextMeshProUGUI>();
-        upgradesBadgeLabel.fontSize = 10;
-        upgradesBadgeLabel.fontStyle = FontStyles.Bold;
-        upgradesBadgeLabel.alignment = TextAlignmentOptions.Center;
-        upgradesBadgeLabel.textWrappingMode = TextWrappingModes.NoWrap;
-        upgradesBadgeLabel.overflowMode = TextOverflowModes.Ellipsis;
+            upgradesBadgeLabel = badgeObj.AddComponent<TextMeshProUGUI>();
+            if (nameLabel != null && nameLabel.font != null)
+            {
+                upgradesBadgeLabel.font = nameLabel.font;
+            }
+            upgradesBadgeLabel.fontSize = 10;
+            upgradesBadgeLabel.fontStyle = FontStyles.Bold;
+            upgradesBadgeLabel.alignment = TextAlignmentOptions.Center;
+            upgradesBadgeLabel.textWrappingMode = TextWrappingModes.NoWrap;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[PortraitUI] EnsureBadgeLabel fallback: {ex.Message}");
+        }
     }
 
     public static string FormatBadges(System.Collections.Generic.List<string> list)
@@ -144,6 +159,7 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
 
         foreach (var u in list)
         {
+            if (string.IsNullOrEmpty(u)) continue;
             string lower = u.ToLowerInvariant();
             if (lower.Contains("blade") || lower.Contains("atk") || lower.Contains("damage")) atkCount++;
             else if (lower.Contains("bulwark") || lower.Contains("def") || lower.Contains("shield") || lower.Contains("armor")) defCount++;

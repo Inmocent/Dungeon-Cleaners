@@ -36,6 +36,68 @@ public class GameRunData : MonoBehaviour
     public int totalRooms = 7;
     public int gold = 100;
 
+    [Header("In-Combat Quick Buffs State")]
+    public bool isPowerBuffActive = false; // lasts 1 room (+35% ATK)
+    public int speedBuffRoomsRemaining = 0; // lasts 2-3 rooms (+40% SPD)
+    public bool hasBoughtPowerThisRoom = false; // only 1 purchase per room
+    public bool hasBoughtSpeedThisRoom = false;
+    public bool hasBoughtReviveThisRoom = false;
+
+    public const int POWER_BUFF_COST = 40;
+    public const int SPEED_BUFF_COST = 50;
+    public const int REVIVE_BUFF_COST = 80;
+
+    public bool IsPowerBuffActive => isPowerBuffActive;
+    public bool IsSpeedBuffActive => speedBuffRoomsRemaining > 0;
+
+    public bool CanAfford(int amount) => gold >= amount;
+
+    public bool SpendGold(int amount)
+    {
+        if (gold >= amount)
+        {
+            gold -= amount;
+            return true;
+        }
+        return false;
+    }
+
+    public void AddGold(int amount)
+    {
+        gold += Mathf.Max(0, amount);
+    }
+
+    public void OnRoomCleared(int enemiesDefeated = 0)
+    {
+        // 1. Expire Power buff (lasts 1 room)
+        isPowerBuffActive = false;
+
+        // 2. Decrement Speed buff (lasts 3 rooms)
+        if (speedBuffRoomsRemaining > 0)
+        {
+            speedBuffRoomsRemaining--;
+        }
+
+        // 3. Reset per-room purchase flags
+        hasBoughtPowerThisRoom = false;
+        hasBoughtSpeedThisRoom = false;
+        hasBoughtReviveThisRoom = false;
+
+        // 4. Calculate and award room clearance gold bounty
+        // Base gold + progression bonus + bounty per enemy
+        int roomBounty = 25 + (currentRoom * 6) + (enemiesDefeated * 8);
+        AddGold(roomBounty);
+    }
+
+    public void ResetRunBuffs()
+    {
+        isPowerBuffActive = false;
+        speedBuffRoomsRemaining = 0;
+        hasBoughtPowerThisRoom = false;
+        hasBoughtSpeedThisRoom = false;
+        hasBoughtReviveThisRoom = false;
+    }
+
     [Header("Healer Priority")]
     public int healerPriorityIndex = -1; // index into squad
 
@@ -118,6 +180,7 @@ public class GameRunData : MonoBehaviour
         currentRoom = 0;
         gold = 100;
         healerPriorityIndex = -1;
+        ResetRunBuffs();
     }
 
     public bool IsBossRoom => currentRoom == totalRooms - 1;

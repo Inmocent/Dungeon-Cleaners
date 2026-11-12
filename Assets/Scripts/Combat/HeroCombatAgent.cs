@@ -39,6 +39,65 @@ public class HeroCombatAgent : MonoBehaviour
     public bool IsAlive => heroInstance != null && heroInstance.isAlive;
     public HeroClass HeroClass => heroInstance?.data.heroClass ?? HeroClass.Knight;
 
+    public float EffectiveMoveSpeed
+    {
+        get
+        {
+            float speed = heroInstance?.data.moveSpeed ?? 4f;
+            if (GameRunData.Instance != null && GameRunData.Instance.IsSpeedBuffActive)
+            {
+                speed *= 1.4f; // +40% Move Speed
+            }
+            return speed;
+        }
+    }
+
+    public int EffectiveAttackDamage
+    {
+        get
+        {
+            int dmg = heroInstance?.data.attackDamage ?? 10;
+            if (GameRunData.Instance != null && GameRunData.Instance.IsPowerBuffActive)
+            {
+                dmg = Mathf.RoundToInt(dmg * 1.35f); // +35% ATK
+            }
+            return dmg;
+        }
+    }
+
+    public float EffectiveAttackSpeed
+    {
+        get
+        {
+            float spd = heroInstance?.data.attackSpeed ?? 1.2f;
+            if (GameRunData.Instance != null && GameRunData.Instance.IsSpeedBuffActive)
+            {
+                spd *= 1.2f; // +20% Attack Speed bonus along with movement speed
+            }
+            return spd;
+        }
+    }
+
+    public void Revive(Vector2 spawnPos)
+    {
+        if (heroInstance == null) return;
+        heroInstance.currentHP = Mathf.Max(1, Mathf.RoundToInt(heroInstance.data.maxHP * 0.5f)); // Revive at 50% HP
+        transform.position = spawnPos;
+        transform.localScale = Vector3.one * 1.2f;
+        if (sr != null)
+        {
+            sr.color = Color.white;
+        }
+        gameObject.SetActive(true);
+        if (animator != null)
+        {
+            animator.SetState(CharacterAnimator.AnimState.Idle);
+            animator.FlashHit();
+        }
+        CombatFeedback.Instance?.ShowText(transform.position, "REVIVED! 💖", new Color(0.2f, 1f, 0.4f), 4f);
+        combat?.RefreshPortraits();
+    }
+
     public void UpdateFormationSlot(int newSlotIdx)
     {
         gridIndex = newSlotIdx;
@@ -59,7 +118,7 @@ public class HeroCombatAgent : MonoBehaviour
 
         // Setup animated sprite
         animator = gameObject.AddComponent<CharacterAnimator>();
-        string spritePrefix = SpriteMapping.GetHeroSpritePrefix(hero.data.heroName);
+        string spritePrefix = SpriteMapping.GetHeroSpritePrefix(hero.data.heroName, hero.data.spritePrefix);
         animator.Setup(spritePrefix);
 
         // Role-based ranges
@@ -155,7 +214,7 @@ public class HeroCombatAgent : MonoBehaviour
 
         if (dist > attackRange)
         {
-            transform.position += (Vector3)(dir * heroInstance.data.moveSpeed * Time.deltaTime);
+            transform.position += (Vector3)(dir * EffectiveMoveSpeed * Time.deltaTime);
             animator.SetState(CharacterAnimator.AnimState.Run);
             animator.SetFacing(dir.x >= 0);
         }
@@ -165,7 +224,7 @@ public class HeroCombatAgent : MonoBehaviour
             animator.SetFacing(dir.x >= 0);
             if (attackTimer <= 0f)
             {
-                attackTimer = 1f / Mathf.Max(0.5f, heroInstance.data.attackSpeed);
+                attackTimer = 1f / Mathf.Max(0.5f, EffectiveAttackSpeed);
                 PerformMeleeAttack(target);
             }
             else
@@ -178,7 +237,7 @@ public class HeroCombatAgent : MonoBehaviour
 
     void PerformMeleeAttack(EnemyCombatAgent target)
     {
-        int dmg = heroInstance.data.attackDamage;
+        int dmg = EffectiveAttackDamage;
         target.TakeDamage(dmg, this);
         heroInstance.UseEnergy(5);
 
@@ -213,14 +272,14 @@ public class HeroCombatAgent : MonoBehaviour
         if (dist < kiteDistance)
         {
             Vector2 awayDir = ((Vector2)transform.position - (Vector2)target.transform.position).normalized;
-            transform.position += (Vector3)(awayDir * (heroInstance.data.moveSpeed * 1.1f) * Time.deltaTime);
+            transform.position += (Vector3)(awayDir * (EffectiveMoveSpeed * 1.1f) * Time.deltaTime);
             animator.SetState(CharacterAnimator.AnimState.Run);
             animator.SetFacing(toTarget.x >= 0); // Keep facing enemy to fire
         }
         // 2. Advance forward if enemy is out of casting range
         else if (dist > attackRange)
         {
-            transform.position += (Vector3)(toTarget * heroInstance.data.moveSpeed * Time.deltaTime);
+            transform.position += (Vector3)(toTarget * EffectiveMoveSpeed * Time.deltaTime);
             animator.SetState(CharacterAnimator.AnimState.Run);
             animator.SetFacing(toTarget.x >= 0);
         }
@@ -233,7 +292,7 @@ public class HeroCombatAgent : MonoBehaviour
             float distDiff = dist - 3.0f;
             Vector2 moveDir = (perp * 0.85f + toTarget * (distDiff * 0.5f)).normalized;
 
-            transform.position += (Vector3)(moveDir * (heroInstance.data.moveSpeed * 0.7f) * Time.deltaTime);
+            transform.position += (Vector3)(moveDir * (EffectiveMoveSpeed * 0.7f) * Time.deltaTime);
             animator.SetState(CharacterAnimator.AnimState.Run);
             animator.SetFacing(toTarget.x >= 0);
         }
@@ -241,7 +300,7 @@ public class HeroCombatAgent : MonoBehaviour
         // Cast fireball when ready
         if (attackTimer <= 0f && dist <= attackRange + 0.6f)
         {
-            attackTimer = 1f / Mathf.Max(0.5f, heroInstance.data.attackSpeed);
+            attackTimer = 1f / Mathf.Max(0.5f, EffectiveAttackSpeed);
             CastFireball(target);
         }
     }
@@ -249,7 +308,7 @@ public class HeroCombatAgent : MonoBehaviour
     void CastFireball(EnemyCombatAgent target)
     {
         heroInstance.UseEnergy(10);
-        int dmg = Mathf.RoundToInt(heroInstance.data.attackDamage * 1.35f);
+        int dmg = Mathf.RoundToInt(EffectiveAttackDamage * 1.35f);
 
         // Spellcast hop/squash
         StartCoroutine(CastAnimation());
@@ -294,7 +353,7 @@ public class HeroCombatAgent : MonoBehaviour
             if (distToAlly > 2.8f)
             {
                 // Advance toward injured comrade
-                transform.position += (Vector3)(toAlly * heroInstance.data.moveSpeed * Time.deltaTime);
+                transform.position += (Vector3)(toAlly * EffectiveMoveSpeed * Time.deltaTime);
                 animator.SetState(CharacterAnimator.AnimState.Run);
                 animator.SetFacing(toAlly.x >= 0);
             }
@@ -302,7 +361,7 @@ public class HeroCombatAgent : MonoBehaviour
             {
                 // Hover near ally while casting
                 Vector2 perp = new Vector2(-toAlly.y, toAlly.x) * strafeSign;
-                transform.position += (Vector3)(perp * (heroInstance.data.moveSpeed * 0.5f) * Time.deltaTime);
+                transform.position += (Vector3)(perp * (EffectiveMoveSpeed * 0.5f) * Time.deltaTime);
                 animator.SetState(CharacterAnimator.AnimState.Run);
                 animator.SetFacing(toAlly.x >= 0);
 
@@ -329,13 +388,13 @@ public class HeroCombatAgent : MonoBehaviour
         if (distToEnemy < kiteDistance)
         {
             Vector2 awayDir = ((Vector2)transform.position - (Vector2)target.transform.position).normalized;
-            transform.position += (Vector3)(awayDir * heroInstance.data.moveSpeed * Time.deltaTime);
+            transform.position += (Vector3)(awayDir * EffectiveMoveSpeed * Time.deltaTime);
             animator.SetState(CharacterAnimator.AnimState.Run);
             animator.SetFacing(toEnemy.x >= 0);
         }
         else if (distToEnemy > attackRange)
         {
-            transform.position += (Vector3)(toEnemy * (heroInstance.data.moveSpeed * 0.85f) * Time.deltaTime);
+            transform.position += (Vector3)(toEnemy * (EffectiveMoveSpeed * 0.85f) * Time.deltaTime);
             animator.SetState(CharacterAnimator.AnimState.Run);
             animator.SetFacing(toEnemy.x >= 0);
         }
@@ -343,7 +402,7 @@ public class HeroCombatAgent : MonoBehaviour
         {
             // Supportive lateral strafe
             Vector2 perp = new Vector2(-toEnemy.y, toEnemy.x) * strafeSign;
-            transform.position += (Vector3)(perp * (heroInstance.data.moveSpeed * 0.55f) * Time.deltaTime);
+            transform.position += (Vector3)(perp * (EffectiveMoveSpeed * 0.55f) * Time.deltaTime);
             animator.SetState(CharacterAnimator.AnimState.Run);
             animator.SetFacing(toEnemy.x >= 0);
 
@@ -381,7 +440,7 @@ public class HeroCombatAgent : MonoBehaviour
 
     void CastLightBolt(EnemyCombatAgent target)
     {
-        int dmg = Mathf.RoundToInt(heroInstance.data.attackDamage * 0.75f);
+        int dmg = Mathf.RoundToInt(EffectiveAttackDamage * 0.75f);
         StartCoroutine(CastAnimation());
 
         CombatProjectile.Spawn(
@@ -604,7 +663,7 @@ public class HeroCombatAgent : MonoBehaviour
         }
 
         Vector2 dir = (target - (Vector2)transform.position).normalized;
-        transform.position += (Vector3)(dir * heroInstance.data.moveSpeed * Time.deltaTime);
+        transform.position += (Vector3)(dir * EffectiveMoveSpeed * Time.deltaTime);
         animator.SetFacing(dir.x >= 0);
     }
 
@@ -620,7 +679,7 @@ public class HeroCombatAgent : MonoBehaviour
         }
 
         Vector2 dir = (targetPosition - (Vector2)transform.position).normalized;
-        transform.position += (Vector3)(dir * heroInstance.data.moveSpeed * Time.deltaTime);
+        transform.position += (Vector3)(dir * EffectiveMoveSpeed * Time.deltaTime);
         animator.SetFacing(dir.x >= 0);
     }
 

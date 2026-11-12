@@ -42,32 +42,73 @@ public class DungeonGenerator : MonoBehaviour
         rooms = new List<DungeonRoom>(roomCount);
 
         int currentX = 0;
+        int currentY = 0;
 
         for (int i = 0; i < roomCount; i++)
         {
-            int w = Random.Range(minRoomWidth, maxRoomWidth + 1);
-            int h = Random.Range(minRoomHeight, maxRoomHeight + 1);
-
-            // Scale room sizes slightly with floor number for variety
-            if (floorNumber > 3)
+            int w, h;
+            if (i == 0)
             {
-                w += Random.Range(0, 2);
-                h += Random.Range(0, 2);
+                // Starting Entrance Chamber
+                w = 11;
+                h = 8;
+            }
+            else if (i == roomCount - 1)
+            {
+                // Grand Colossal Boss Sanctum
+                w = Random.Range(22, 26);
+                h = Random.Range(14, 17);
+            }
+            else
+            {
+                // High Variety Room Sizing: Small Skirmish, Medium Hall, or Huge Grand Arena
+                int sizeArchetype = (i + floorNumber) % 3;
+                if (sizeArchetype == 0)
+                {
+                    // Small / Tight Skirmish Chamber (Close-quarters frantic combat)
+                    w = Random.Range(8, 10);
+                    h = Random.Range(6, 8);
+                }
+                else if (sizeArchetype == 1)
+                {
+                    // Medium Tactical Chamber (Balanced maneuvering space)
+                    w = Random.Range(13, 16);
+                    h = Random.Range(9, 12);
+                }
+                else
+                {
+                    // Huge Grand Arena (Epic battlefield for swarms, traps & maneuvering)
+                    w = Random.Range(20, 24);
+                    h = Random.Range(13, 16);
+                }
             }
 
-            int y = Random.Range(-2, 3); // slight vertical offset for variety
-
-            var rect = new RectInt(currentX, y, w, h);
+            var rect = new RectInt(currentX, currentY, w, h);
             var room = new DungeonRoom(i, rect);
 
             // Last room is boss room
             if (i == roomCount - 1)
                 room.isBossRoom = true;
 
+            GenerateRouteOptions(room, floorNumber);
             rooms.Add(room);
 
-            // Advance X for next room
-            currentX += w + gapBetweenRooms;
+            // Directional branching for next room placement: North (+Y), South (-Y), or East (+0)
+            int branchGap = 6;
+            currentX += w + branchGap;
+
+            if (i < roomCount - 1)
+            {
+                // Alternate directional shifts so the dungeon climbs and descends organically
+                if (i % 2 == 1)
+                {
+                    currentY += Random.Range(5, 8); // Climb North
+                }
+                else
+                {
+                    currentY -= Random.Range(4, 7); // Descend South
+                }
+            }
         }
 
         // Connect rooms linearly
@@ -91,11 +132,103 @@ public class DungeonGenerator : MonoBehaviour
         return rooms;
     }
 
+    void GenerateRouteOptions(DungeonRoom room, int floorNumber)
+    {
+        if (room.index == 0)
+        {
+            room.activeRoute = new RouteOption
+            {
+                routeType = RoomRouteType.Skirmish,
+                title = "ENTRANCE CHAMBER",
+                pathName = "START",
+                enemyPreview = "3 Skeletons",
+                hazardNotice = "Safe Entrance",
+                rewardPreview = "30 Gold",
+                enemyCount = 3,
+                hasTraps = false,
+                goldMultiplier = 1.0f,
+                cardAccentColor = new Color(0.2f, 0.45f, 0.7f)
+            };
+            return;
+        }
+
+        if (room.isBossRoom)
+        {
+            room.activeRoute = new RouteOption
+            {
+                routeType = RoomRouteType.Elite,
+                title = "THRONE OF BONES",
+                pathName = "BOSS",
+                enemyPreview = "Skeleton King + Minions",
+                hazardNotice = "Shadow Awakening",
+                rewardPreview = "Floor Clearance Trophy",
+                enemyCount = 1,
+                hasTraps = false,
+                goldMultiplier = 2.5f,
+                cardAccentColor = new Color(0.75f, 0.15f, 0.15f)
+            };
+            return;
+        }
+
+        // Direction-aware route options based on dungeon architecture
+        string dirA = "NORTH ROUTE";
+        string dirB = "DIRECT PASSAGE";
+        if (room.index % 2 == 0)
+        {
+            dirA = "SOUTH DESCENT";
+            dirB = "EAST VAULT";
+        }
+
+        string sizeTag = room.bounds.width >= 20 ? " [GRAND ARENA]" : (room.bounds.width <= 10 ? " [SKIRMISH]" : "");
+
+        bool optAIsSwarm = Random.value > 0.55f;
+        var optA = new RouteOption
+        {
+            pathName = dirA,
+            routeType = optAIsSwarm ? RoomRouteType.Horde : RoomRouteType.Skirmish,
+            title = (optAIsSwarm ? "SWARM CORRIDOR" : "CRYPT PASSAGE") + sizeTag,
+            enemyPreview = optAIsSwarm ? "6-7 Swarm Fiends" : "3-4 Skeletons",
+            hazardNotice = optAIsSwarm ? "High Density Encounter" : "Clear Chamber (No Traps)",
+            rewardPreview = optAIsSwarm ? "+75 Gold (+70%)" : "+45 Gold",
+            enemyCount = optAIsSwarm ? Random.Range(6, 8) : Random.Range(3, 5),
+            hasTraps = false,
+            goldMultiplier = optAIsSwarm ? 1.7f : 1.0f,
+            enemyHpMultiplier = 1.0f,
+            enemyDmgMultiplier = 1.0f,
+            cardAccentColor = optAIsSwarm ? new Color(0.85f, 0.45f, 0.15f) : new Color(0.22f, 0.48f, 0.75f)
+        };
+
+        // Option B: Right/East Route (Trapped Crypt or Elite Champion)
+        bool optBIsElite = Random.value > 0.5f;
+        var optB = new RouteOption
+        {
+            pathName = dirB,
+            routeType = optBIsElite ? RoomRouteType.Elite : RoomRouteType.TrappedCrypt,
+            title = (optBIsElite ? "WARLORD'S VAULT" : "SPIKE CRYPT") + sizeTag,
+            enemyPreview = optBIsElite ? "1 Skeletal Warlord (2x HP)" : "4-5 Skeletons",
+            hazardNotice = optBIsElite ? "Heavy Striking Champion" : "Floor Spikes (10 Dmg)",
+            rewardPreview = optBIsElite ? "+110 Gold (+120%)" : "+90 Gold (+100%)",
+            enemyCount = optBIsElite ? Random.Range(2, 4) : Random.Range(4, 6),
+            hasTraps = !optBIsElite,
+            goldMultiplier = optBIsElite ? 2.2f : 2.0f,
+            enemyHpMultiplier = optBIsElite ? 1.8f : 1.0f,
+            enemyDmgMultiplier = optBIsElite ? 1.35f : 1.0f,
+            cardAccentColor = optBIsElite ? new Color(0.65f, 0.22f, 0.85f) : new Color(0.82f, 0.2f, 0.2f)
+        };
+
+        room.routeOptionA = optA;
+        room.routeOptionB = optB;
+        room.activeRoute = optA; // Default fallback
+    }
+
     void LoadSpriteAssets()
     {
         if (sprFloor != null) return;
         sprFloor = Resources.Load<Sprite>("Sprites/frames/floor_1");
         sprFloorBoss = Resources.Load<Sprite>("Sprites/frames/floor_8") ?? sprFloor;
+        sprFloorMossy = Resources.Load<Sprite>("Sprites/frames/floor_2") ?? sprFloor;
+        sprFloorDark = Resources.Load<Sprite>("Sprites/frames/floor_5") ?? sprFloor;
+        sprFloorAncient = Resources.Load<Sprite>("Sprites/frames/floor_3") ?? sprFloor;
         sprWallTop = Resources.Load<Sprite>("Sprites/frames/wall_top_mid");
         sprWallMid = Resources.Load<Sprite>("Sprites/frames/wall_mid");
         sprWallLeft = Resources.Load<Sprite>("Sprites/frames/wall_left");
@@ -111,6 +244,9 @@ public class DungeonGenerator : MonoBehaviour
 
     private Sprite sprFloor;
     private Sprite sprFloorBoss;
+    private Sprite sprFloorMossy;
+    private Sprite sprFloorDark;
+    private Sprite sprFloorAncient;
     private Sprite sprWallTop;
     private Sprite sprWallMid;
     private Sprite sprWallLeft;
@@ -134,8 +270,25 @@ public class DungeonGenerator : MonoBehaviour
 
         foreach (var room in rooms)
         {
-            // 1. Tiled Floor
-            var floorSprite = room.isBossRoom ? sprFloorBoss : sprFloor;
+            // 1. Tiled Floor with style variety per room archetype
+            Sprite floorSprite = sprFloor;
+            if (room.isBossRoom)
+            {
+                floorSprite = sprFloorBoss;
+            }
+            else if (room.bounds.width >= 20)
+            {
+                floorSprite = sprFloorDark ?? sprFloor;
+            }
+            else if (room.bounds.width <= 10)
+            {
+                floorSprite = sprFloorMossy ?? sprFloor;
+            }
+            else if (room.index % 2 == 1)
+            {
+                floorSprite = sprFloorAncient ?? sprFloor;
+            }
+
             var floorGo = CreateTiledQuad(
                 $"Room_{room.index}_Floor",
                 room.center,
@@ -200,7 +353,7 @@ public class DungeonGenerator : MonoBehaviour
                 roomVisuals.Add(wallRightGo);
             }
 
-            // 4. Props & Atmosphere (Banners, Crates, Skulls)
+            // 4. Props & Atmosphere (Columns, Banners, Crates, Skulls)
             if (room.isBossRoom)
             {
                 // Boss room banners & skulls
@@ -217,6 +370,17 @@ public class DungeonGenerator : MonoBehaviour
             }
             else
             {
+                // Huge Room Grand Columns for tactical cover and cathedral architecture
+                if (room.bounds.width >= 19 && sprColumn != null)
+                {
+                    float cx = room.center.x;
+                    float cy = room.center.y;
+                    AddProp($"Col_{room.index}_1", new Vector2(cx - 5f, cy + 2.8f), sprColumn, 3);
+                    AddProp($"Col_{room.index}_2", new Vector2(cx + 5f, cy + 2.8f), sprColumn, 3);
+                    AddProp($"Col_{room.index}_3", new Vector2(cx - 5f, cy - 2.8f), sprColumn, 3);
+                    AddProp($"Col_{room.index}_4", new Vector2(cx + 5f, cy - 2.8f), sprColumn, 3);
+                }
+
                 // Occasional regular room decorations
                 if (sprBannerBlue != null && room.index % 2 == 1)
                 {
@@ -229,30 +393,56 @@ public class DungeonGenerator : MonoBehaviour
             }
         }
 
-        // Corridors between rooms
+        // Corridors between rooms with directional elbow / L-bend support
         for (int i = 0; i < rooms.Count - 1; i++)
         {
             var r1 = rooms[i].bounds;
             var r2 = rooms[i + 1].bounds;
 
-            float corrX = r1.xMax;
-            float corrWidth = r2.xMin - r1.xMax;
-            float corrY = Mathf.Lerp(
-                r1.y + r1.height * 0.5f,
-                r2.y + r2.height * 0.5f,
-                0.5f
-            );
+            float doorY1 = r1.y + r1.height * 0.5f;
+            float doorY2 = r2.y + r2.height * 0.5f;
+            float midX = (r1.xMax + r2.xMin) * 0.5f;
 
-            // Corridor floor
-            var corrGo = CreateTiledQuad(
-                $"Corridor_{i}_{i + 1}",
-                new Vector2(corrX + corrWidth * 0.5f, corrY),
-                new Vector2(corrWidth, corridorWidth),
+            // Segment 1: Horizontal exit from r1 to midX
+            float seg1Width = midX - r1.xMax + 0.5f;
+            var corrGo1 = CreateTiledQuad(
+                $"Corridor_{i}_seg1",
+                new Vector2((r1.xMax + midX) * 0.5f, doorY1),
+                new Vector2(seg1Width, corridorWidth),
                 sprFloor,
                 new Color(0.85f, 0.85f, 0.85f),
                 0
             );
-            roomVisuals.Add(corrGo);
+            roomVisuals.Add(corrGo1);
+
+            // Segment 2: Vertical shaft along midX if rooms are at different heights
+            float dy = Mathf.Abs(doorY2 - doorY1);
+            if (dy > 0.5f)
+            {
+                float minY = Mathf.Min(doorY1, doorY2);
+                float maxY = Mathf.Max(doorY1, doorY2);
+                var corrGo2 = CreateTiledQuad(
+                    $"Corridor_{i}_seg2",
+                    new Vector2(midX, (minY + maxY) * 0.5f),
+                    new Vector2(corridorWidth, maxY - minY + corridorWidth),
+                    sprFloor,
+                    new Color(0.80f, 0.80f, 0.80f),
+                    0
+                );
+                roomVisuals.Add(corrGo2);
+            }
+
+            // Segment 3: Horizontal entry from midX to r2
+            float seg3Width = r2.xMin - midX + 0.5f;
+            var corrGo3 = CreateTiledQuad(
+                $"Corridor_{i}_seg3",
+                new Vector2((midX + r2.xMin) * 0.5f, doorY2),
+                new Vector2(seg3Width, corridorWidth),
+                sprFloor,
+                new Color(0.85f, 0.85f, 0.85f),
+                0
+            );
+            roomVisuals.Add(corrGo3);
 
             // Door indicators
             var doorSprite = sprDoorOpen ?? sprDoorClosed;
@@ -260,13 +450,13 @@ public class DungeonGenerator : MonoBehaviour
             {
                 var door1 = AddProp(
                     $"Door_{i}_exit",
-                    new Vector2(r1.xMax, r1.y + r1.height * 0.5f),
+                    new Vector2(r1.xMax, doorY1),
                     doorSprite,
                     4
                 );
                 var door2 = AddProp(
                     $"Door_{i + 1}_entry",
-                    new Vector2(r2.xMin, r2.y + r2.height * 0.5f),
+                    new Vector2(r2.xMin, doorY2),
                     doorSprite,
                     4
                 );
@@ -400,10 +590,11 @@ public class DungeonGenerator : MonoBehaviour
     }
 
     /// <summary>
-    /// Returns 3 waypoints for heroes to walk through the corridor from one room to the next:
-    ///   [0] = exit door of currentRoom (right edge)
-    ///   [1] = corridor midpoint
-    ///   [2] = entry door of nextRoom (left edge)
+    /// Returns 4 waypoints for heroes to physically walk through the directional corridor:
+    ///   [0] = exit door of currentRoom
+    ///   [1] = corridor turn point 1 (aligned with exit door Y)
+    ///   [2] = corridor turn point 2 (aligned with entry door Y)
+    ///   [3] = entry door of nextRoom
     /// </summary>
     public Vector2[] GetCorridorWaypoints(int currentRoomIndex, int nextRoomIndex)
     {
@@ -415,15 +606,19 @@ public class DungeonGenerator : MonoBehaviour
 
         float doorY1 = r1.y + r1.height * 0.5f;
         float doorY2 = r2.y + r2.height * 0.5f;
-        float corridorMidY = Mathf.Lerp(doorY1, doorY2, 0.5f);
-        float corridorMidX = (r1.xMax + r2.xMin) * 0.5f;
+        float midX = (r1.xMax + r2.xMin) * 0.5f;
 
-        return new Vector2[]
+        Vector2 exitDoor = new Vector2(r1.xMax + 0.5f, doorY1);
+        Vector2 turn1 = new Vector2(midX, doorY1);
+        Vector2 turn2 = new Vector2(midX, doorY2);
+        Vector2 entryDoor = new Vector2(r2.xMin + 0.5f, doorY2);
+
+        if (Mathf.Abs(doorY1 - doorY2) < 0.6f)
         {
-            new Vector2(r1.xMax + 0.5f, doorY1),          // exit door
-            new Vector2(corridorMidX, corridorMidY),       // corridor center
-            new Vector2(r2.xMin + 1f, doorY2)              // entry door
-        };
+            return new Vector2[] { exitDoor, turn1, entryDoor };
+        }
+
+        return new Vector2[] { exitDoor, turn1, turn2, entryDoor };
     }
 
     /// <summary>
