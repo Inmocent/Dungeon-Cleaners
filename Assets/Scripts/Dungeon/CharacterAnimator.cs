@@ -21,6 +21,8 @@ public class CharacterAnimator : MonoBehaviour
 
     private bool isInitialized;
     private bool facingRight = true;
+    private Color baseTint = Color.white;
+    private Coroutine flashCoroutine;
 
     void Awake()
     {
@@ -128,40 +130,53 @@ public class CharacterAnimator : MonoBehaviour
 
     public void SetFacing(bool right)
     {
-        if (facingRight == right) return;
         facingRight = right;
         var scale = transform.localScale;
-        scale.x = right ? Mathf.Abs(scale.x) : -Mathf.Abs(scale.x);
-        transform.localScale = scale;
+        float targetX = right ? Mathf.Abs(scale.x) : -Mathf.Abs(scale.x);
+        if (!Mathf.Approximately(scale.x, targetX))
+        {
+            scale.x = targetX;
+            transform.localScale = scale;
+        }
     }
 
     /// <summary>
-    /// Flash white for hit feedback, then restore.
+    /// Flash red/white for hit feedback, then restore baseTint safely.
     /// </summary>
     public void FlashHit()
     {
-        if (sr == null) return;
-        StartCoroutine(FlashCoroutine());
+        if (sr == null || !gameObject.activeInHierarchy) return;
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+            flashCoroutine = null;
+        }
+        flashCoroutine = StartCoroutine(FlashCoroutine());
     }
 
     System.Collections.IEnumerator FlashCoroutine()
     {
-        var origColor = sr.color;
         sr.color = new Color(1f, 0.35f, 0.35f, 1f);
         yield return new WaitForSeconds(0.1f);
-        sr.color = origColor;
+        if (sr != null)
+            sr.color = baseTint;
+        flashCoroutine = null;
     }
 
-    /// <summary>
-    /// Set tint color (useful for indicating status effects).
-    /// </summary>
     public void SetTint(Color c)
     {
+        baseTint = c;
         if (sr) sr.color = c;
     }
 
     public void ResetTint()
     {
+        baseTint = Color.white;
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+            flashCoroutine = null;
+        }
         if (sr) sr.color = Color.white;
     }
 }

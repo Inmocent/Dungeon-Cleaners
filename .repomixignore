@@ -1,0 +1,72 @@
+# Unity GUID metadata & heavy serialized scene/asset YAML
+*.meta
+*.unity
+*.scenetemplate
+*.prefab
+*.mat
+*.anim
+*.controller
+*.overrideController
+*.mask
+*.mixer
+*.physicMaterial
+*.physicsMaterial2D
+*.flare
+*.fontsettings
+*.guiskin
+*.renderTexture
+*.spriteatlas
+*.spriteatlasv2
+*.terrainlayer
+*.brush
+*.cubemap
+*.lighting
+*.asset
+
+# Binary textures, 2D/3D art, fonts, and audio
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.tga
+*.tif
+*.tiff
+*.psd
+*.psb
+*.ase
+*.aseprite
+*.svg
+*.wav
+*.mp3
+*.ogg
+*.aif
+*.aiff
+*.ttf
+*.otf
+*.fbx
+*.obj
+*.blend
+*.blend1
+*.dae
+*.3ds
+*.dxf
+*.max
+*.ma
+*.mb
+
+# Third-party, package lock, & TextMeshPro bloat
+Assets/TextMesh Pro/**
+Assets/Plugins/**
+Assets/StreamingAssets/**
+Assets/Resources/**
+Packages/packages-lock.json
+
+# Keep only essential ProjectSettings (tags, layers, input, Unity version)
+ProjectSettings/**
+!ProjectSettings/ProjectVersion.txt
+!ProjectSettings/TagManager.asset
+!ProjectSettings/InputManager.asset
+!ProjectSettings/DynamicsManager.asset
+
+# Ignore generated Repomix output itself
+repomix-output.*

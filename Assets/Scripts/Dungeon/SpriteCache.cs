@@ -53,6 +53,33 @@ public static class SpriteCache
     }
 
     /// <summary>
+    /// Resilient lookup for a character or boss portrait sprite.
+    /// Tests candidate suffixes in order: _idle_anim_f0, _anim_f0, _run_anim_f0, _f0, then raw prefix.
+    /// </summary>
+    public static Sprite LoadHeroOrBossSprite(string prefix)
+    {
+        if (string.IsNullOrEmpty(prefix)) return null;
+
+        string[] suffixes = new string[]
+        {
+            "_idle_anim_f0",
+            "_anim_f0",
+            "_run_anim_f0",
+            "_f0",
+            ""
+        };
+
+        foreach (var suf in suffixes)
+        {
+            string candidate = prefix.EndsWith(suf) && !string.IsNullOrEmpty(suf) ? prefix : prefix + suf;
+            var spr = LoadSprite(candidate);
+            if (spr != null) return spr;
+        }
+
+        return LoadSprite(prefix);
+    }
+
+    /// <summary>
     /// Clear cache (call on scene transitions if needed to free memory).
     /// </summary>
     public static void Clear()

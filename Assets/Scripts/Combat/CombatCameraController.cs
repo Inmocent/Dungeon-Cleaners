@@ -66,6 +66,10 @@ public class CombatCameraController : MonoBehaviour
     private float overrideOrthoSize;
     private bool isOverrideActive = false;
     private bool isTerminalClimax = false;
+    private float preClimaxTimeScale = 1f;
+    private Coroutine climaxCoroutine;
+
+    public bool IsTerminalClimax => isTerminalClimax;
 
     // Cache of active targets to avoid allocations
     private readonly List<Transform> trackedTargets = new List<Transform>(32);
@@ -91,6 +95,16 @@ public class CombatCameraController : MonoBehaviour
             overrideOrthoSize = targetCamera.orthographicSize;
             overrideTargetPos = targetCamera.transform.position;
         }
+    }
+
+    void OnDestroy()
+    {
+        if (isTerminalClimax && Time.timeScale > 0f)
+        {
+            Time.timeScale = preClimaxTimeScale > 0f ? preClimaxTimeScale : 1f;
+        }
+        if (Instance == this)
+            Instance = null;
     }
 
     /// <summary>
@@ -153,7 +167,24 @@ public class CombatCameraController : MonoBehaviour
     /// </summary>
     public void TriggerTerminalClimax(Vector3 casualtyPos, System.Action onComplete = null)
     {
-        StartCoroutine(TerminalClimaxRoutine(casualtyPos, onComplete));
+        if (!gameObject.activeInHierarchy)
+        {
+            onComplete?.Invoke();
+            return;
+        }
+
+        if (climaxCoroutine != null)
+        {
+            StopCoroutine(climaxCoroutine);
+            climaxCoroutine = null;
+        }
+
+        if (!isTerminalClimax)
+        {
+            preClimaxTimeScale = Time.timeScale > 0f ? Time.timeScale : 1f;
+        }
+
+        climaxCoroutine = StartCoroutine(TerminalClimaxRoutine(casualtyPos, onComplete));
     }
 
     private IEnumerator TerminalClimaxRoutine(Vector3 casualtyPos, System.Action onComplete)
@@ -164,12 +195,10 @@ public class CombatCameraController : MonoBehaviour
         overrideTargetPos = casualtyPos;
         overrideOrthoSize = minOrthoSize;
 
-        // Add visceral tactile shake
         AddTrauma(0.65f);
 
-        // Dilate simulation time scale for punchline impact
-        float originalTimeScale = Time.timeScale;
-        Time.timeScale = 0.35f;
+        if (Time.timeScale > 0f)
+            Time.timeScale = 0.35f;
 
         float elapsed = 0f;
         while (elapsed < climaxZoomTime)
@@ -178,12 +207,15 @@ public class CombatCameraController : MonoBehaviour
             yield return null;
         }
 
-        // Hold close-up beat in slow-mo
         yield return new WaitForSecondsRealtime(0.35f);
 
-        // Smoothly restore time scale
-        Time.timeScale = originalTimeScale;
+        if (Time.timeScale > 0f)
+            Time.timeScale = preClimaxTimeScale > 0f ? preClimaxTimeScale : 1f;
+
         isTerminalClimax = false;
+        isMultiTargetTracking = true;
+        isOverrideActive = false;
+        climaxCoroutine = null;
 
         onComplete?.Invoke();
     }

@@ -121,7 +121,7 @@ public class EnemyCombatAgent : MonoBehaviour
     {
         if (sr != null)
         {
-            sr.sortingOrder = 100 - Mathf.RoundToInt(transform.position.y * 10);
+            sr.sortingOrder = 2000 - Mathf.RoundToInt(transform.position.y * 10);
         }
     }
 
@@ -342,8 +342,16 @@ public class EnemyCombatAgent : MonoBehaviour
         currentHP -= dmg;
         if (animator) animator.FlashHit();
 
-        if (isBoss && attacker != null)
-            combat.DamageBoss(dmg);
+        if (isBoss)
+        {
+            combat?.DamageBoss(dmg);
+            if (currentHP <= 0)
+            {
+                currentHP = 0;
+                // Boss defeat is animated and handled by DungeonCombatController.BossDefeatSequence
+                return;
+            }
+        }
 
         if (currentHP <= 0)
         {

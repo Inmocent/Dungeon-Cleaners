@@ -3,7 +3,7 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using TMPro;
 
-/// <summary>Circular portrait in the combat bottom panel.</summary>
+/// <summary>Hero portrait card in the combat bottom panel — themed and non-overlapping.</summary>
 public class PortraitUI : MonoBehaviour, IPointerClickHandler
 {
     public Image portraitCircle;           // hero sprite / class color
@@ -12,17 +12,17 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
     public Slider energyBar;
     public Image hpFill;
     public Image energyFill;
-    public TextMeshProUGUI hpLabel;       // e.g. "85/85"
-    public TextMeshProUGUI fatiguedLabel;  // "FATIGUED" warning
-    public Image deadOverlay;             // semi-transparent dark overlay when dead
-    public TextMeshProUGUI upgradesBadgeLabel; // Mini-badge row showing acquired upgrades
+    public TextMeshProUGUI hpLabel;
+    public TextMeshProUGUI fatiguedLabel;
+    public Image deadOverlay;
+    public TextMeshProUGUI upgradesBadgeLabel;
 
     private HeroInstance hero;
     private System.Action<HeroInstance> onTap;
 
-    static readonly Color HP_COLOR      = new Color(0.2f, 0.8f, 0.2f);
-    static readonly Color HP_LOW_COLOR  = new Color(0.9f, 0.2f, 0.2f);
-    static readonly Color EN_COLOR      = new Color(0.2f, 0.5f, 0.9f);
+    static readonly Color HP_COLOR     = new Color(0.24f, 0.84f, 0.34f);
+    static readonly Color HP_LOW_COLOR = new Color(0.94f, 0.24f, 0.24f);
+    static readonly Color EN_COLOR     = new Color(0.26f, 0.58f, 0.98f);
 
     public void Setup(HeroInstance h, System.Action<HeroInstance> tapCb)
     {
@@ -32,10 +32,15 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
         if (hero == null || hero.data == null) return;
         if (hero.upgrades == null) hero.upgrades = new();
 
+        var theme = DungeonUITheme.Instance;
+        var rootImg = GetComponent<Image>();
+        if (rootImg != null) DungeonUITheme.ApplyCard(rootImg, new Color(0.14f, 0.16f, 0.23f, 0.96f));
+
         string prefix = SpriteMapping.GetHeroSpritePrefix(hero.data.heroName, hero.data.spritePrefix);
-        var heroSprite = SpriteCache.LoadSprite($"{prefix}_idle_anim_f0");
+        var heroSprite = SpriteCache.LoadHeroOrBossSprite(prefix);
         if (portraitCircle)
         {
+            portraitCircle.enabled = true;
             if (heroSprite != null)
             {
                 portraitCircle.sprite = heroSprite;
@@ -48,17 +53,27 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
             }
         }
 
-        if (nameLabel) nameLabel.text = hero.displayName ?? hero.data.heroName;
+        if (nameLabel)
+        {
+            nameLabel.text = hero.displayName ?? hero.data.heroName;
+            nameLabel.raycastTarget = false;
+        }
 
         if (hpBar)
         {
             hpBar.maxValue = hero.data.maxHP;
             hpBar.value = hero.currentHP;
+            DungeonUITheme.ApplySlider(hpBar, theme != null ? theme.hpGreen : HP_COLOR);
+            if (hpFill == null && hpBar.fillRect != null)
+                hpFill = hpBar.fillRect.GetComponent<Image>();
         }
         if (energyBar)
         {
             energyBar.maxValue = hero.data.maxEnergy;
             energyBar.value = hero.currentEnergy;
+            DungeonUITheme.ApplySlider(energyBar, theme != null ? theme.energyBlue : EN_COLOR);
+            if (energyFill == null && energyBar.fillRect != null)
+                energyFill = energyBar.fillRect.GetComponent<Image>();
         }
 
         if (hpLabel == null && hpBar != null)
@@ -78,11 +93,18 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
         if (hero == null || hero.data == null) return;
         if (hero.upgrades == null) hero.upgrades = new();
 
-        if (hpBar) hpBar.value = hero.currentHP;
-        if (energyBar) energyBar.value = hero.currentEnergy;
+        if (hpBar)
+        {
+            hpBar.maxValue = hero.data.maxHP;
+            hpBar.value = hero.currentHP;
+        }
+        if (energyBar)
+        {
+            energyBar.maxValue = hero.data.maxEnergy;
+            energyBar.value = hero.currentEnergy;
+        }
         if (hpLabel) hpLabel.text = $"{hero.currentHP}/{hero.data.maxHP}";
 
-        // HP color: green when ok, red when < 30%
         if (hpFill)
             hpFill.color = ((float)hero.currentHP / Mathf.Max(1, hero.data.maxHP)) < 0.3f ? HP_LOW_COLOR : HP_COLOR;
 
@@ -92,7 +114,6 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
         bool dead = !hero.isAlive;
         if (deadOverlay) deadOverlay.gameObject.SetActive(dead);
 
-        // Upgrade badges row
         if (upgradesBadgeLabel != null)
         {
             if (hero.upgrades != null && hero.upgrades.Count > 0)
@@ -120,25 +141,25 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
 
         try
         {
-            // Auto-create badge row if not in serialized prefab
-            var badgeObj = new GameObject("UpgradesBadge");
+            var badgeObj = new GameObject("UpgradesBadge", typeof(RectTransform));
             badgeObj.transform.SetParent(transform, false);
 
-            var rt = badgeObj.AddComponent<RectTransform>();
+            var rt = badgeObj.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0f, 0f);
             rt.anchorMax = new Vector2(1f, 0f);
-            rt.anchoredPosition = new Vector2(0f, 57f);
-            rt.sizeDelta = new Vector2(0f, 15f);
+            rt.anchoredPosition = new Vector2(0f, 52f);
+            rt.sizeDelta = new Vector2(0f, 16f);
 
             upgradesBadgeLabel = badgeObj.AddComponent<TextMeshProUGUI>();
             if (nameLabel != null && nameLabel.font != null)
             {
                 upgradesBadgeLabel.font = nameLabel.font;
             }
-            upgradesBadgeLabel.fontSize = 10;
+            upgradesBadgeLabel.fontSize = 11;
             upgradesBadgeLabel.fontStyle = FontStyles.Bold;
             upgradesBadgeLabel.alignment = TextAlignmentOptions.Center;
             upgradesBadgeLabel.textWrappingMode = TextWrappingModes.NoWrap;
+            upgradesBadgeLabel.raycastTarget = false;
         }
         catch (System.Exception ex)
         {

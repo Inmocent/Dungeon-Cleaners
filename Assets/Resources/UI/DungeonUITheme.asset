@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3c8e76b3269b40aaa965cb0fcf40043a, type: 3}
+  m_Name: DungeonUITheme
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonUITheme
+  panelFrame: {fileID: 21300000, guid: ccc295c220d67634b8c12b8e787d47b2, type: 3}
+  cardFrame: {fileID: 21300000, guid: 6dab162920dbf5a4e88ff608a5690f07, type: 3}
+  btnNormal: {fileID: 21300000, guid: fa9353cee0a041d4ca123126b8c99324, type: 3}
+  btnHover: {fileID: 21300000, guid: bb1a62a422f905840977585aa7668837, type: 3}
+  btnPressed: {fileID: 21300000, guid: 6040082503e2576419fd9c539ecdafdc, type: 3}
+  barBg: {fileID: 21300000, guid: 9aa0962864053f142b0568a7ade21639, type: 3}
+  barFill: {fileID: 21300000, guid: 70671ce417a624e499044a36b994d111, type: 3}
+  bgVoid: {r: 0.05, g: 0.06, b: 0.09, a: 1}
+  panelSlate: {r: 0.16, g: 0.18, b: 0.24, a: 0.98}
+  panelHeaderTint: {r: 0.11, g: 0.13, b: 0.18, a: 0.98}
+  cardBaseTint: {r: 0.2, g: 0.23, b: 0.31, a: 0.98}
+  accentGold: {r: 0.98, g: 0.82, b: 0.28, a: 1}
+  accentCyan: {r: 0.28, g: 0.84, b: 0.98, a: 1}
+  btnPrimaryGreen: {r: 0.24, g: 0.68, b: 0.38, a: 1}
+  btnSecondarySteel: {r: 0.32, g: 0.38, b: 0.5, a: 1}
+  btnDangerRed: {r: 0.78, g: 0.24, b: 0.26, a: 1}
+  btnArcaneBlue: {r: 0.24, g: 0.48, b: 0.84, a: 1}
+  hpGreen: {r: 0.24, g: 0.84, b: 0.34, a: 1}
+  hpLowRed: {r: 0.94, g: 0.24, b: 0.24, a: 1}
+  energyBlue: {r: 0.26, g: 0.58, b: 0.98, a: 1}
+  fatigueAmber: {r: 0.98, g: 0.72, b: 0.2, a: 1}

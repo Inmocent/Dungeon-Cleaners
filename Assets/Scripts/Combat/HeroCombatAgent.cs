@@ -18,7 +18,9 @@ public class HeroCombatAgent : MonoBehaviour
     private SpriteRenderer sr;
     private float attackTimer;
     private bool dodgeRolling;
+    private bool isDying;
     private int gridIndex;
+    private float baseUniformScale = 1.2f;
 
     // Movement & Range
     private Vector2 targetPosition;
@@ -36,17 +38,24 @@ public class HeroCombatAgent : MonoBehaviour
     private float strafeSign = 1f;
     private float strafeTimer;
 
+    // Coroutine handles to prevent race conditions during x2 speedup
+    private Coroutine lungeCoroutine;
+    private Coroutine castCoroutine;
+    private Coroutine healFlashCoroutine;
+    private Coroutine dieCoroutine;
+    private Coroutine dodgeCoroutine;
+
     public bool IsAlive => heroInstance != null && heroInstance.isAlive;
-    public HeroClass HeroClass => heroInstance?.data.heroClass ?? HeroClass.Knight;
+    public HeroClass HeroClass => heroInstance?.data != null ? heroInstance.data.heroClass : HeroClass.Knight;
 
     public float EffectiveMoveSpeed
     {
         get
         {
-            float speed = heroInstance?.data.moveSpeed ?? 4f;
+            float speed = heroInstance?.data != null ? heroInstance.data.moveSpeed : 4f;
             if (GameRunData.Instance != null && GameRunData.Instance.IsSpeedBuffActive)
             {
-                speed *= 1.4f; // +40% Move Speed
+                speed *= 1.4f;
             }
             return speed;
         }
@@ -56,10 +65,10 @@ public class HeroCombatAgent : MonoBehaviour
     {
         get
         {
-            int dmg = heroInstance?.data.attackDamage ?? 10;
+            int dmg = heroInstance?.data != null ? heroInstance.data.attackDamage : 10;
             if (GameRunData.Instance != null && GameRunData.Instance.IsPowerBuffActive)
             {
-                dmg = Mathf.RoundToInt(dmg * 1.35f); // +35% ATK
+                dmg = Mathf.RoundToInt(dmg * 1.35f);
             }
             return dmg;
         }
@@ -69,31 +78,78 @@ public class HeroCombatAgent : MonoBehaviour
     {
         get
         {
-            float spd = heroInstance?.data.attackSpeed ?? 1.2f;
+            float spd = heroInstance?.data != null ? heroInstance.data.attackSpeed : 1.2f;
             if (GameRunData.Instance != null && GameRunData.Instance.IsSpeedBuffActive)
             {
-                spd *= 1.2f; // +20% Attack Speed bonus along with movement speed
+                spd *= 1.2f;
             }
             return spd;
         }
     }
 
+    public void SetInitiallyDead()
+    {
+        StopAllCoroutines();
+        lungeCoroutine = null;
+        castCoroutine = null;
+        healFlashCoroutine = null;
+        dieCoroutine = null;
+        dodgeCoroutine = null;
+        isDying = false;
+        dodgeRolling = false;
+        isFollowingPath = false;
+        isMovingToTarget = false;
+        waypointPath = null;
+        gameObject.SetActive(false);
+    }
+
     public void Revive(Vector2 spawnPos)
     {
-        if (heroInstance == null) return;
-        heroInstance.currentHP = Mathf.Max(1, Mathf.RoundToInt(heroInstance.data.maxHP * 0.5f)); // Revive at 50% HP
-        transform.position = spawnPos;
-        transform.localScale = Vector3.one * 1.2f;
+        if (heroInstance == null || heroInstance.data == null) return;
+
+        StopAllCoroutines();
+        lungeCoroutine = null;
+        castCoroutine = null;
+        healFlashCoroutine = null;
+        dieCoroutine = null;
+        dodgeCoroutine = null;
+
+        isDying = false;
+        dodgeRolling = false;
+        isFollowingPath = false;
+        isMovingToTarget = false;
+        waypointPath = null;
+        currentWaypointIndex = 0;
+        attackTimer = 0f;
+
+        heroInstance.currentHP = Mathf.Max(1, Mathf.RoundToInt(heroInstance.data.maxHP * 0.5f));
+
+        Rect? bounds = combat?.GetCurrentRoomBounds();
+        if (bounds.HasValue)
+        {
+            Rect b = bounds.Value;
+            spawnPos.x = Mathf.Clamp(spawnPos.x, b.xMin, b.xMax);
+            spawnPos.y = Mathf.Clamp(spawnPos.y, b.yMin, b.yMax);
+        }
+
+        transform.position = new Vector3(spawnPos.x, spawnPos.y, 0f);
+        transform.localScale = Vector3.one * baseUniformScale;
+
         if (sr != null)
         {
             sr.color = Color.white;
         }
+
         gameObject.SetActive(true);
+
         if (animator != null)
         {
+            animator.ResetTint();
             animator.SetState(CharacterAnimator.AnimState.Idle);
+            animator.SetFacing(true);
             animator.FlashHit();
         }
+
         CombatFeedback.Instance?.ShowText(transform.position, "REVIVED! 💖", new Color(0.2f, 1f, 0.4f), 4f);
         combat?.RefreshPortraits();
     }
@@ -105,23 +161,64 @@ public class HeroCombatAgent : MonoBehaviour
         {
             heroInstance.gridIndex = newSlotIdx;
         }
+        int col = Mathf.Clamp(newSlotIdx, 0, 8) % 3;
+        int row = Mathf.Clamp(newSlotIdx, 0, 8) / 3;
+        formationOffset = new Vector2(col * 1.3f - 1.3f, (1 - row) * 1.0f);
+    }
+
+    public void SnapToPosition(Vector2 position)
+    {
+        Vector2 target = position + formationOffset;
+        Rect? bounds = combat?.GetCurrentRoomBounds();
+        if (bounds.HasValue)
+        {
+            Rect b = bounds.Value;
+            target.x = Mathf.Clamp(target.x, b.xMin, b.xMax);
+            target.y = Mathf.Clamp(target.y, b.yMin, b.yMax);
+        }
+        transform.position = new Vector3(target.x, target.y, 0f);
+        isFollowingPath = false;
+        isMovingToTarget = false;
+        waypointPath = null;
+    }
+
+    public void ClearMovementTargets()
+    {
+        isFollowingPath = false;
+        isMovingToTarget = false;
+        waypointPath = null;
+        currentWaypointIndex = 0;
+        if (animator != null && gameObject.activeInHierarchy)
+            animator.SetState(CharacterAnimator.AnimState.Idle);
+    }
+
+    public void SnapToPathEnd()
+    {
+        if (isFollowingPath && waypointPath != null && waypointPath.Length > 0)
+        {
+            Vector2 end = waypointPath[waypointPath.Length - 1];
+            transform.position = new Vector3(end.x, end.y, 0f);
+        }
+        else if (isMovingToTarget)
+        {
+            transform.position = new Vector3(targetPosition.x, targetPosition.y, 0f);
+        }
+        ClearMovementTargets();
     }
 
     public void Init(HeroInstance hero, int slotIdx, ICombatController ctrl)
     {
         heroInstance = hero;
         combat = ctrl;
-        gridIndex = slotIdx;
+        gridIndex = Mathf.Clamp(slotIdx, 0, 8);
 
         sr = GetComponent<SpriteRenderer>();
         sr.sortingOrder = 10;
 
-        // Setup animated sprite
-        animator = gameObject.AddComponent<CharacterAnimator>();
+        animator = GetComponent<CharacterAnimator>() ?? gameObject.AddComponent<CharacterAnimator>();
         string spritePrefix = SpriteMapping.GetHeroSpritePrefix(hero.data.heroName, hero.data.spritePrefix);
         animator.Setup(spritePrefix);
 
-        // Role-based ranges
         switch (hero.data.heroClass)
         {
             case HeroClass.Knight:
@@ -138,15 +235,14 @@ public class HeroCombatAgent : MonoBehaviour
                 break;
         }
 
-        strafeSign = (slotIdx % 2 == 0) ? 1f : -1f;
+        strafeSign = (gridIndex % 2 == 0) ? 1f : -1f;
         strafeTimer = Random.Range(1.2f, 2.4f);
 
-        // Formation offset with generous spacing so heroes never overlap (1.3m X, 1.0m Y)
-        int col = slotIdx % 3;
-        int row = slotIdx / 3;
+        int col = gridIndex % 3;
+        int row = gridIndex / 3;
         formationOffset = new Vector2(col * 1.3f - 1.3f, (1 - row) * 1.0f);
 
-        transform.localScale = Vector3.one * 1.2f;
+        transform.localScale = Vector3.one * baseUniformScale;
     }
 
     void LateUpdate()
@@ -154,13 +250,13 @@ public class HeroCombatAgent : MonoBehaviour
         // Dynamic top-down Y-sorting: lower Y = closer to foreground = higher sortingOrder
         if (sr != null)
         {
-            sr.sortingOrder = 100 - Mathf.RoundToInt(transform.position.y * 10);
+            sr.sortingOrder = 2000 - Mathf.RoundToInt(transform.position.y * 10);
         }
     }
 
     void Update()
     {
-        if (!IsAlive || combat == null || combat.IsPaused || dodgeRolling) return;
+        if (!IsAlive || isDying || combat == null || combat.IsPaused || dodgeRolling) return;
 
         if (combat.IsInCombatPhase)
         {
@@ -237,14 +333,17 @@ public class HeroCombatAgent : MonoBehaviour
 
     void PerformMeleeAttack(EnemyCombatAgent target)
     {
+        if (target == null || !target.IsAlive || !gameObject.activeInHierarchy) return;
+
         int dmg = EffectiveAttackDamage;
         target.TakeDamage(dmg, this);
         heroInstance.UseEnergy(5);
 
         // Floating combat text on target
-        CombatFeedback.Instance.ShowText(target.transform.position, $"-{dmg}", Color.white, 3.2f);
+        CombatFeedback.Instance?.ShowText(target.transform.position, $"-{dmg}", Color.white, 3.2f);
 
-        StartCoroutine(AttackLunge(target.transform.position));
+        if (lungeCoroutine != null) StopCoroutine(lungeCoroutine);
+        lungeCoroutine = StartCoroutine(AttackLunge(target.transform.position));
     }
 
     // ---- Mage Behavior (Dynamic Fireball Caster — Never Stays Frozen!) ----
@@ -307,13 +406,15 @@ public class HeroCombatAgent : MonoBehaviour
 
     void CastFireball(EnemyCombatAgent target)
     {
+        if (target == null || !target.IsAlive || !gameObject.activeInHierarchy) return;
+
         heroInstance.UseEnergy(10);
         int dmg = Mathf.RoundToInt(EffectiveAttackDamage * 1.35f);
 
-        // Spellcast hop/squash
-        StartCoroutine(CastAnimation());
+        if (castCoroutine != null) StopCoroutine(castCoroutine);
+        castCoroutine = StartCoroutine(CastAnimation());
 
-        // Spawn fireball projectile
+        var controller = combat;
         CombatProjectile.Spawn(
             transform.position,
             target.transform,
@@ -321,10 +422,10 @@ public class HeroCombatAgent : MonoBehaviour
             9.5f,
             () =>
             {
-                if (target != null && target.IsAlive)
+                if (controller != null && controller.IsInCombatPhase && target != null && target.IsAlive)
                 {
                     target.TakeDamage(dmg, this);
-                    CombatFeedback.Instance.ShowText(target.transform.position, $"-{dmg} 💥", new Color(1f, 0.6f, 0.1f), 3.8f);
+                    CombatFeedback.Instance?.ShowText(target.transform.position, $"-{dmg} 💥", new Color(1f, 0.6f, 0.1f), 3.8f);
                 }
             },
             0.65f
@@ -416,12 +517,15 @@ public class HeroCombatAgent : MonoBehaviour
 
     void CastHealingSpell(HeroCombatAgent targetAlly)
     {
+        if (targetAlly == null || !targetAlly.IsAlive || !gameObject.activeInHierarchy) return;
+
         heroInstance.UseEnergy(15);
         int healAmount = 25;
 
-        StartCoroutine(CastAnimation());
+        if (castCoroutine != null) StopCoroutine(castCoroutine);
+        castCoroutine = StartCoroutine(CastAnimation());
 
-        // Spawn emerald healing orb
+        var controller = combat;
         CombatProjectile.Spawn(
             transform.position,
             targetAlly.transform,
@@ -429,7 +533,7 @@ public class HeroCombatAgent : MonoBehaviour
             7.5f,
             () =>
             {
-                if (targetAlly != null && targetAlly.IsAlive)
+                if (controller != null && controller.IsInCombatPhase && targetAlly != null && targetAlly.IsAlive)
                 {
                     targetAlly.ReceiveHeal(healAmount);
                 }
@@ -440,9 +544,13 @@ public class HeroCombatAgent : MonoBehaviour
 
     void CastLightBolt(EnemyCombatAgent target)
     {
-        int dmg = Mathf.RoundToInt(EffectiveAttackDamage * 0.75f);
-        StartCoroutine(CastAnimation());
+        if (target == null || !target.IsAlive || !gameObject.activeInHierarchy) return;
 
+        int dmg = Mathf.RoundToInt(EffectiveAttackDamage * 0.75f);
+        if (castCoroutine != null) StopCoroutine(castCoroutine);
+        castCoroutine = StartCoroutine(CastAnimation());
+
+        var controller = combat;
         CombatProjectile.Spawn(
             transform.position,
             target.transform,
@@ -450,10 +558,10 @@ public class HeroCombatAgent : MonoBehaviour
             8.5f,
             () =>
             {
-                if (target != null && target.IsAlive)
+                if (controller != null && controller.IsInCombatPhase && target != null && target.IsAlive)
                 {
                     target.TakeDamage(dmg, this);
-                    CombatFeedback.Instance.ShowText(target.transform.position, $"-{dmg}", new Color(0.6f, 0.9f, 1f), 2.8f);
+                    CombatFeedback.Instance?.ShowText(target.transform.position, $"-{dmg}", new Color(0.6f, 0.9f, 1f), 2.8f);
                 }
             },
             0.45f
@@ -462,7 +570,7 @@ public class HeroCombatAgent : MonoBehaviour
 
     IEnumerator CastAnimation()
     {
-        Vector3 baseScale = transform.localScale;
+        Vector3 baseScale = Vector3.one * baseUniformScale;
         float t = 0f;
         while (t < 0.16f)
         {
@@ -472,6 +580,7 @@ public class HeroCombatAgent : MonoBehaviour
             yield return null;
         }
         transform.localScale = baseScale;
+        castCoroutine = null;
     }
 
     // ---- Targeting Helpers ----
@@ -525,27 +634,37 @@ public class HeroCombatAgent : MonoBehaviour
             yield return null;
         }
         transform.position = startPos;
+        lungeCoroutine = null;
     }
 
     public void TakeDamage(int dmg)
     {
+        if (!IsAlive || isDying) return;
+
         heroInstance.TakeDamage(dmg);
         if (animator) animator.FlashHit();
 
         // Show floating damage above hero
-        CombatFeedback.Instance.ShowText(transform.position, $"-{dmg}", new Color(1f, 0.3f, 0.3f), 3.2f);
+        CombatFeedback.Instance?.ShowText(transform.position, $"-{dmg}", new Color(1f, 0.3f, 0.3f), 3.2f);
 
         // Immediately update HUD portraits
         combat?.RefreshPortraits();
 
         if (!IsAlive)
         {
-            StartCoroutine(DieEffect());
+            isDying = true;
+            if (lungeCoroutine != null) StopCoroutine(lungeCoroutine);
+            if (castCoroutine != null) StopCoroutine(castCoroutine);
+            if (dodgeCoroutine != null) StopCoroutine(dodgeCoroutine);
+            if (healFlashCoroutine != null) StopCoroutine(healFlashCoroutine);
+            if (dieCoroutine != null) StopCoroutine(dieCoroutine);
+            dieCoroutine = StartCoroutine(DieEffect());
         }
     }
 
     IEnumerator DieEffect()
     {
+        isDying = true;
         if (sr) sr.color = new Color(1f, 0.3f, 0.3f, 1f);
         float t = 0;
         while (t < 0.5f)
@@ -553,15 +672,19 @@ public class HeroCombatAgent : MonoBehaviour
             t += Time.deltaTime;
             float alpha = Mathf.Lerp(1f, 0f, t / 0.5f);
             if (sr) sr.color = new Color(1f, 0.3f, 0.3f, alpha);
-            transform.localScale = Vector3.Lerp(Vector3.one * 1.2f, Vector3.one * 0.3f, t / 0.5f);
+            transform.localScale = Vector3.Lerp(Vector3.one * baseUniformScale, Vector3.one * 0.3f, t / 0.5f);
             yield return null;
         }
+        isDying = false;
+        dieCoroutine = null;
         gameObject.SetActive(false);
     }
 
     public void TriggerDodgeRoll()
     {
-        StartCoroutine(DodgeRoll());
+        if (!gameObject.activeInHierarchy || isDying) return;
+        if (dodgeCoroutine != null) StopCoroutine(dodgeCoroutine);
+        dodgeCoroutine = StartCoroutine(DodgeRoll());
     }
 
     IEnumerator DodgeRoll()
@@ -579,19 +702,23 @@ public class HeroCombatAgent : MonoBehaviour
             yield return null;
         }
         dodgeRolling = false;
+        dodgeCoroutine = null;
     }
 
     public void ReceiveHeal(int amount)
     {
+        if (!IsAlive || isDying) return;
+
         heroInstance.currentHP = Mathf.Min(heroInstance.currentHP + amount, heroInstance.data.maxHP);
 
         // Green floating heal text
-        CombatFeedback.Instance.ShowText(transform.position, $"+{amount} HP", new Color(0.25f, 0.95f, 0.3f), 3.6f);
+        CombatFeedback.Instance?.ShowText(transform.position, $"+{amount} HP", new Color(0.25f, 0.95f, 0.3f), 3.6f);
 
         // Immediately update HUD portraits so the player sees HP bar move!
         combat?.RefreshPortraits();
 
-        StartCoroutine(HealFlash());
+        if (healFlashCoroutine != null) StopCoroutine(healFlashCoroutine);
+        healFlashCoroutine = StartCoroutine(HealFlash());
     }
 
     IEnumerator HealFlash()
@@ -602,6 +729,7 @@ public class HeroCombatAgent : MonoBehaviour
             yield return new WaitForSeconds(0.2f);
             sr.color = Color.white;
         }
+        healFlashCoroutine = null;
     }
 
     public void MoveTo(Vector2 position)
@@ -647,8 +775,9 @@ public class HeroCombatAgent : MonoBehaviour
 
         Vector2 target = waypointPath[currentWaypointIndex];
         float dist = Vector2.Distance(transform.position, target);
+        float step = EffectiveMoveSpeed * Time.deltaTime;
 
-        if (dist < 0.15f)
+        if (dist <= Mathf.Max(0.18f, step))
         {
             // Snap and advance to next waypoint
             transform.position = new Vector3(target.x, target.y, 0f);
@@ -663,14 +792,15 @@ public class HeroCombatAgent : MonoBehaviour
         }
 
         Vector2 dir = (target - (Vector2)transform.position).normalized;
-        transform.position += (Vector3)(dir * EffectiveMoveSpeed * Time.deltaTime);
+        transform.position += (Vector3)(dir * step);
         animator.SetFacing(dir.x >= 0);
     }
 
     void MoveToTarget()
     {
         float dist = Vector2.Distance(transform.position, targetPosition);
-        if (dist < 0.1f)
+        float step = EffectiveMoveSpeed * Time.deltaTime;
+        if (dist <= Mathf.Max(0.18f, step))
         {
             transform.position = (Vector3)targetPosition;
             isMovingToTarget = false;
@@ -679,7 +809,7 @@ public class HeroCombatAgent : MonoBehaviour
         }
 
         Vector2 dir = (targetPosition - (Vector2)transform.position).normalized;
-        transform.position += (Vector3)(dir * EffectiveMoveSpeed * Time.deltaTime);
+        transform.position += (Vector3)(dir * step);
         animator.SetFacing(dir.x >= 0);
     }
 

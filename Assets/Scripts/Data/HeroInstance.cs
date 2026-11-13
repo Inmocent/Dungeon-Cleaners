@@ -2,6 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Runtime state of a hero during a run. Wraps HeroData with live HP/Energy values.
+/// Clones the HeroData ScriptableObject per instance so run upgrades never mutate project assets.
 /// </summary>
 [System.Serializable]
 public class HeroInstance
@@ -21,10 +22,14 @@ public class HeroInstance
 
     public HeroInstance(HeroData heroData)
     {
-        data = heroData;
-        displayName = heroData.heroName;
-        currentHP = heroData.maxHP;
-        currentEnergy = heroData.maxEnergy;
+        if (heroData != null)
+        {
+            data = Object.Instantiate(heroData);
+            data.name = heroData.name;
+            displayName = data.heroName;
+            currentHP = data.maxHP;
+            currentEnergy = data.maxEnergy;
+        }
     }
 
     public void RestoreEnergy(float percent)

@@ -149,6 +149,8 @@ public class DungeonGenerator : MonoBehaviour
                 goldMultiplier = 1.0f,
                 cardAccentColor = new Color(0.2f, 0.45f, 0.7f)
             };
+            room.routeOptionA = room.activeRoute;
+            room.routeOptionB = room.activeRoute;
             return;
         }
 
@@ -167,6 +169,8 @@ public class DungeonGenerator : MonoBehaviour
                 goldMultiplier = 2.5f,
                 cardAccentColor = new Color(0.75f, 0.15f, 0.15f)
             };
+            room.routeOptionA = room.activeRoute;
+            room.routeOptionB = room.activeRoute;
             return;
         }
 

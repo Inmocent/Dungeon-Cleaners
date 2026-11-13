@@ -15,11 +15,10 @@ public class RewardCardUI : MonoBehaviour
     private System.Action<RewardData, bool> onToggled;
     private bool isSelected = false;
 
-    static readonly Color RestColor    = new Color(0.85f, 0.48f, 0.18f);
-    static readonly Color UpgradeColor = new Color(0.18f, 0.45f, 0.82f);
-    static readonly Color WeaponColor  = new Color(0.68f, 0.22f, 0.88f); // Violet cyberpunk theme
-    static readonly Color GoldColor    = new Color(0.88f, 0.72f, 0.15f); // Amber gold theme
-    static readonly Color SelectedBorderColor = new Color(1f, 0.85f, 0.1f);
+    static readonly Color RestColor    = new Color(0.62f, 0.38f, 0.16f);
+    static readonly Color UpgradeColor = new Color(0.18f, 0.36f, 0.66f);
+    static readonly Color WeaponColor  = new Color(0.48f, 0.20f, 0.68f);
+    static readonly Color GoldColor    = new Color(0.64f, 0.50f, 0.14f);
 
     public void Setup(RewardData r, System.Action<RewardData, bool> toggleCb)
     {
@@ -49,11 +48,19 @@ public class RewardCardUI : MonoBehaviour
         }
 
         if (typeLabel) typeLabel.text = badge;
-        if (cardBackground) cardBackground.color = bgCol;
-        if (selectionBorder) selectionBorder.gameObject.SetActive(false);
+        if (cardBackground) DungeonUITheme.ApplyCard(cardBackground, bgCol);
+        if (selectionBorder)
+        {
+            DungeonUITheme.ApplyPanel(selectionBorder, new Color(1f, 0.85f, 0.18f, 0.95f));
+            selectionBorder.gameObject.SetActive(false);
+        }
 
         var btn = GetComponent<Button>();
-        if (btn) btn.onClick.AddListener(OnTap);
+        if (btn)
+        {
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(OnTap);
+        }
     }
 
     void OnTap()
