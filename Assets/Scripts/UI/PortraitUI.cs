@@ -85,6 +85,12 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
         if (deadOverlay) deadOverlay.gameObject.SetActive(false);
 
         EnsureBadgeLabel();
+
+        // The HP text lives as a child of the slider but must render above the BG/Fill images,
+        // otherwise the "100/100" numerals are invisible. Move it to the top of the child order.
+        if (hpLabel != null && hpLabel.transform.parent == hpBar.transform)
+            hpLabel.transform.SetAsLastSibling();
+
         Refresh();
     }
 
@@ -155,7 +161,7 @@ public class PortraitUI : MonoBehaviour, IPointerClickHandler
             {
                 upgradesBadgeLabel.font = nameLabel.font;
             }
-            upgradesBadgeLabel.fontSize = 11;
+            upgradesBadgeLabel.fontSize = 14;
             upgradesBadgeLabel.fontStyle = FontStyles.Bold;
             upgradesBadgeLabel.alignment = TextAlignmentOptions.Center;
             upgradesBadgeLabel.textWrappingMode = TextWrappingModes.NoWrap;

@@ -156,7 +156,8 @@ public class CharacterAnimator : MonoBehaviour
 
     System.Collections.IEnumerator FlashCoroutine()
     {
-        sr.color = new Color(1f, 0.35f, 0.35f, 1f);
+        bool reduce = PlayerPrefs.GetInt("ReduceShakeAndFlashes", 0) == 1;
+        sr.color = reduce ? new Color(1f, 0.75f, 0.75f, 1f) : new Color(1f, 0.35f, 0.35f, 1f);
         yield return new WaitForSeconds(0.1f);
         if (sr != null)
             sr.color = baseTint;

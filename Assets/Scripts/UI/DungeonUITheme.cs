@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
 /// Centralized Dark-Dungeon Pixel-Art UI theme asset loaded from Resources/UI/DungeonUITheme.
@@ -32,6 +33,10 @@ public class DungeonUITheme : ScriptableObject
     public Color hpLowRed          = new Color(0.94f, 0.24f, 0.24f, 1f);
     public Color energyBlue        = new Color(0.26f, 0.58f, 0.98f, 1f);
     public Color fatigueAmber      = new Color(0.98f, 0.72f, 0.20f, 1f);
+
+    // WCAG-safe text tones (spec: replace #64748B which fails AA at 2.35:1)
+    public static readonly Color MutedText = new Color(0.58f, 0.64f, 0.72f, 1f); // #94A3B8
+    public static readonly Color BodyText  = new Color(0.89f, 0.91f, 0.94f, 1f); // #E2E8F0
 
     private static DungeonUITheme _cached;
     public static DungeonUITheme Instance
@@ -105,8 +110,7 @@ public class DungeonUITheme : ScriptableObject
     }
 
     public static void ApplySlider(Slider slider, Color fillColor)
-    {
-        if (slider == null) return;
+    {        if (slider == null) return;
         var t = Instance;
 
         if (slider.targetGraphic is Image bgImg)
@@ -132,6 +136,33 @@ public class DungeonUITheme : ScriptableObject
                 fillImg.color = fillColor;
             }
         }
+    }
+
+    private static Material _ctaMaterial;
+
+    /// <summary>
+    /// Dark outline + underlay so white CTA labels stay readable on green/blue/red buttons
+    /// (white on #3DAD61 measures ~2.85:1 without it).
+    /// </summary>
+    public static void ApplyCtaText(TextMeshProUGUI tmp)
+    {
+        if (tmp == null) return;
+
+        if (_ctaMaterial == null && tmp.font != null)
+        {
+            _ctaMaterial = new Material(tmp.font.material);
+            _ctaMaterial.SetColor(ShaderUtilities.ID_OutlineColor, new Color(0.024f, 0.031f, 0.047f, 1f)); // #06080C
+            _ctaMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.20f);
+            _ctaMaterial.SetColor(ShaderUtilities.ID_UnderlayColor, new Color(0.024f, 0.031f, 0.047f, 0.85f));
+            _ctaMaterial.SetFloat(ShaderUtilities.ID_UnderlayOffsetX, 0f);
+            _ctaMaterial.SetFloat(ShaderUtilities.ID_UnderlayOffsetY, -0.6f);
+            _ctaMaterial.SetFloat(ShaderUtilities.ID_UnderlaySoftness, 0.1f);
+            _ctaMaterial.EnableKeyword("OUTLINE_ON");
+            _ctaMaterial.EnableKeyword("UNDERLAY_ON");
+        }
+
+        if (_ctaMaterial != null) tmp.fontMaterial = _ctaMaterial;
+        tmp.color = Color.white;
     }
 }
 

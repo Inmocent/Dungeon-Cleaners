@@ -10,4 +10,7 @@ STRICT TOKEN & MCP ECONOMY RULES:
 5. MINIMAL DIFFS: When editing C# UI scripts, modify ONLY the target methods. Never rewrite entire files.
 6. COMPILE & LOG DISCIPLINE: After script edits, check console logs ONCE for errors. If clean, stop immediately—do not run redundant scene tests.
 7. ARCHITECTURE: Keep UI decoupled (MVP/MVVM or C# events). Use TextMeshPro (TMP) by default.
+8. NO FULL-REPO SCANS: Never run broad `Glob`, `Grep`, or read `repomix-output.xml` unless explicitly instructed. Only open the exact file paths named in the user prompt.
+9. SNIPER EXECUTION: When given a micro-spec with target file paths and method names, read ONLY the target line ranges (`offset`/`limit`), apply minimal edits, check Unity console logs ONCE via `unity-mcp`, and stop immediately.
+10. SESSION HYGIENE: Remind the user in 1 short line at the end of a completed milestone to run `/clear` and `npx -y repomix` before starting the next screen.
 

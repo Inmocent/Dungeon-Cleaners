@@ -24,7 +24,8 @@ public class RewardController : MonoBehaviour
     private Button rerollButton;
     private TextMeshProUGUI rerollText;
     private TextMeshProUGUI goldLabel;
-    private const int REROLL_COST = 25;
+    private const int REROLL_BASE_COST = 35;
+    private int rerollsUsedThisFloor = 0;
 
     private List<RewardData> shownRewards = new();
     private List<RewardData> selectedRewards = new();
@@ -38,7 +39,7 @@ public class RewardController : MonoBehaviour
         GameRunData.Instance?.EnsureSquadAndFormation();
 
         restModal.SetActive(false);
-        confirmButton.interactable = false;
+        confirmButton.interactable = true;   // never a dead tap — grey tint + 2s feedback instead
         backButton.onClick.AddListener(() => SceneNav.GoTo(SceneNames.Formation));
         confirmButton.onClick.AddListener(OnConfirm);
         restConfirmBtn.onClick.AddListener(OnConfirmRest);
@@ -64,7 +65,7 @@ public class RewardController : MonoBehaviour
         winRt.anchorMax = new Vector2(0.5f, 0.5f);
         winRt.pivot = new Vector2(0.5f, 0.5f);
         winRt.anchoredPosition = new Vector2(0f, 10f);
-        winRt.sizeDelta = new Vector2(980f, 560f);
+        winRt.sizeDelta = new Vector2(1120f, 680f);
 
         var winBg = windowGo.AddComponent<Image>();
         DungeonUITheme.ApplyPanel(winBg, theme != null ? theme.panelSlate : new Color(0.14f, 0.16f, 0.22f, 0.98f));
@@ -158,12 +159,12 @@ public class RewardController : MonoBehaviour
             cardRt.anchorMax = new Vector2(0.5f, 0.5f);
             cardRt.pivot = new Vector2(0.5f, 0.5f);
             cardRt.anchoredPosition = new Vector2(0f, 8f);
-            cardRt.sizeDelta = new Vector2(900f, 340f);
+            cardRt.sizeDelta = new Vector2(1080f, 420f);
 
             var hlg = cardContainer.GetComponent<HorizontalLayoutGroup>();
             if (hlg != null)
             {
-                hlg.spacing = 28;
+                hlg.spacing = 32;
                 hlg.childAlignment = TextAnchor.MiddleCenter;
                 hlg.childControlWidth = false;
                 hlg.childControlHeight = false;
@@ -183,6 +184,8 @@ public class RewardController : MonoBehaviour
             rt.sizeDelta = new Vector2(270f, 56f);
 
             DungeonUITheme.ApplyButton(confirmButton, theme != null ? theme.btnPrimaryGreen : new Color(0.24f, 0.68f, 0.38f), true);
+        var confirmTmp = confirmButton.GetComponentInChildren<TextMeshProUGUI>();
+        if (confirmTmp != null) DungeonUITheme.ApplyCtaText(confirmTmp);
         }
 
         var btnGo = new GameObject("RerollButton", typeof(RectTransform));
@@ -209,12 +212,13 @@ public class RewardController : MonoBehaviour
         textRt.offsetMax = Vector2.zero;
 
         rerollText = textGo.AddComponent<TextMeshProUGUI>();
-        rerollText.text = $"REROLL ({REROLL_COST}g)";
-        rerollText.fontSize = 18;
+        rerollText.text = $"REROLL (FREE)";
+        rerollText.fontSize = 16;
         rerollText.fontStyle = FontStyles.Bold;
         rerollText.alignment = TextAlignmentOptions.Center;
         rerollText.color = Color.white;
         rerollText.raycastTarget = false;
+        DungeonUITheme.ApplyCtaText(rerollText);
 
         if (restModal != null)
         {
@@ -235,32 +239,46 @@ public class RewardController : MonoBehaviour
 
     void RefreshGoldLabel()
     {
+        int rerollCost = GetRerollCost();
+        bool isFree = rerollCost == 0;
+
         if (goldLabel != null && GameRunData.Instance != null)
         {
             goldLabel.text = $"GOLD: {GameRunData.Instance.gold}G";
         }
         if (rerollButton != null && GameRunData.Instance != null)
         {
-            bool canAfford = GameRunData.Instance.CanAfford(REROLL_COST);
+            bool canAfford = isFree || GameRunData.Instance.CanAfford(rerollCost);
             rerollButton.interactable = canAfford;
             if (rerollText != null)
             {
+                rerollText.text = isFree ? "REROLL (FREE)" : $"REROLL ({rerollCost}G)";
                 rerollText.color = canAfford ? Color.white : new Color(0.6f, 0.6f, 0.6f, 0.7f);
             }
         }
+    }
+
+    int GetRerollCost()
+    {
+        if (rerollsUsedThisFloor == 0) return 0;
+        if (rerollsUsedThisFloor == 1) return 70;
+        if (rerollsUsedThisFloor == 2) return 120;
+        return 120;
     }
 
     void OnRerollClicked()
     {
         var run = GameRunData.Instance;
         if (run == null) return;
-        if (!run.CanAfford(REROLL_COST)) return;
+        int cost = GetRerollCost();
+        if (cost > 0 && !run.CanAfford(cost)) return;
 
-        run.SpendGold(REROLL_COST);
+        if (cost > 0) run.SpendGold(cost);
+        rerollsUsedThisFloor++;
         RefreshGoldLabel();
 
         selectedRewards.Clear();
-        confirmButton.interactable = false;
+        RefreshConfirmButton();
 
         GenerateRewards();
     }
@@ -361,22 +379,81 @@ public class RewardController : MonoBehaviour
         }
     }
 
-    void OnCardToggled(RewardData reward, bool isSelected)
+    bool OnCardToggled(RewardData reward, bool isSelected)
     {
         if (isSelected)
         {
-            if (selectedRewards.Count >= 2) return;
+            if (selectedRewards.Count >= 2) return false;
             selectedRewards.Add(reward);
         }
         else
         {
             selectedRewards.Remove(reward);
         }
-        confirmButton.interactable = selectedRewards.Count == 2;
+        RefreshConfirmButton();
+        return selectedRewards.Count <= 2;
+    }
+
+    private void OnEnable()
+    {
+        RewardCardUI.SelectionRejected += OnSelectionRejected;
+    }
+
+    private void OnDisable()
+    {
+        RewardCardUI.SelectionRejected -= OnSelectionRejected;
+    }
+
+    void OnSelectionRejected(RewardCardUI card)
+    {
+        if (lockedFeedbackRoutine != null) StopCoroutine(lockedFeedbackRoutine);
+        lockedFeedbackRoutine = StartCoroutine(RewardLockedFeedbackRoutine());
+    }
+
+    void RefreshConfirmButton()
+    {
+        if (confirmButton == null) return;
+        var img = confirmButton.GetComponent<Image>();
+        bool ready = selectedRewards.Count == 2;
+        if (img != null)
+        {
+            var theme = DungeonUITheme.Instance;
+            Color readyCol = theme != null ? theme.btnPrimaryGreen : new Color(0.24f, 0.68f, 0.38f, 1f);
+            if (img.color.a <= 0.01f) img.color = readyCol; // first call: adopt theme colour
+            img.color = ready ? readyCol : new Color(0.34f, 0.37f, 0.43f, 1f);
+        }
+    }
+
+    private UnityEngine.Coroutine lockedFeedbackRoutine;
+
+    System.Collections.IEnumerator RewardLockedFeedbackRoutine()
+    {
+        var img = confirmButton.GetComponent<Image>();
+        var label = confirmButton.GetComponentInChildren<TextMeshProUGUI>();
+        Color origCol = img != null ? img.color : Color.white;
+        string origText = label != null ? label.text : string.Empty;
+
+        if (img != null) img.color = new Color(0.45f, 0.47f, 0.55f, 1f);
+        if (label != null) label.text = $"Choose {2 - selectedRewards.Count} more reward{(2 - selectedRewards.Count == 1 ? "" : "s")}";
+
+        yield return new WaitForSecondsRealtime(2f);
+
+        if (img != null) img.color = origCol;
+        if (label != null) label.text = origText;
+
+        RefreshConfirmButton();
+        lockedFeedbackRoutine = null;
     }
 
     void OnConfirm()
     {
+        if (selectedRewards.Count != 2)
+        {
+            if (lockedFeedbackRoutine != null) StopCoroutine(lockedFeedbackRoutine);
+            lockedFeedbackRoutine = StartCoroutine(RewardLockedFeedbackRoutine());
+            return;
+        }
+
         bool hasRest = false;
         foreach (var r in selectedRewards)
         {

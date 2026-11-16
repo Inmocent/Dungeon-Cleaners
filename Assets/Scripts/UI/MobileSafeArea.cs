@@ -88,6 +88,70 @@ public class MobileSafeArea : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Registers a lazily-created HUD element (QuickBuffBar, StakeTracker, banners, dialogue)
+    /// so it receives the current insets immediately. Call right after instantiation.
+    /// </summary>
+    public void RegisterRuntimeElement(RectTransform rt)
+    {
+        if (rt == null) return;
+
+        if (!baseAnchoredPositions.ContainsKey(rt))
+        {
+            baseAnchoredPositions[rt] = rt.anchoredPosition;
+            baseOffsets[rt] = (rt.offsetMin, rt.offsetMax);
+        }
+
+        string lower = rt.name.ToLowerInvariant();
+        if (lower == "background" || lower.Contains("modal")) return;
+
+        float scale = targetCanvas != null && targetCanvas.scaleFactor > 0.001f ? targetCanvas.scaleFactor : 1f;
+        Rect safe = Screen.safeArea;
+        if (Screen.width <= 0 || Screen.height <= 0 || scale <= 0.001f) return;
+
+        float leftInset   = safe.x / scale;
+        float bottomInset = safe.y / scale;
+        float rightInset  = (Screen.width - safe.xMax) / scale;
+        float topInset    = (Screen.height - safe.yMax) / scale;
+
+        Vector2 basePos = baseAnchoredPositions[rt];
+        var (baseMin, baseMax) = baseOffsets[rt];
+
+        bool stretchX = !Mathf.Approximately(rt.anchorMin.x, rt.anchorMax.x);
+        bool stretchY = !Mathf.Approximately(rt.anchorMin.y, rt.anchorMax.y);
+
+        if (stretchX || stretchY)
+        {
+            Vector2 oMin = baseMin;
+            Vector2 oMax = baseMax;
+
+            if (stretchX && Mathf.Approximately(rt.anchorMin.x, 0f) && Mathf.Approximately(rt.anchorMax.x, 1f))
+            {
+                oMin.x += leftInset;
+                oMax.x -= rightInset;
+            }
+            if (stretchY && Mathf.Approximately(rt.anchorMin.y, 0f) && Mathf.Approximately(rt.anchorMax.y, 1f))
+            {
+                oMin.y += bottomInset;
+                oMax.y -= topInset;
+            }
+
+            rt.offsetMin = oMin;
+            rt.offsetMax = oMax;
+        }
+        else
+        {
+            Vector2 pos = basePos;
+            if (Mathf.Approximately(rt.anchorMin.x, 0f)) pos.x += leftInset;
+            else if (Mathf.Approximately(rt.anchorMin.x, 1f)) pos.x -= rightInset;
+
+            if (Mathf.Approximately(rt.anchorMin.y, 0f)) pos.y += bottomInset;
+            else if (Mathf.Approximately(rt.anchorMin.y, 1f)) pos.y -= topInset;
+
+            rt.anchoredPosition = pos;
+        }
+    }
+
     public void ApplySafeArea()
     {
         if (targetCanvas == null || Screen.width <= 0 || Screen.height <= 0) return;

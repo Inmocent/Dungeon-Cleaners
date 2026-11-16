@@ -387,11 +387,12 @@ public static class DungeonCleanersBuilder
         var bg = CreatePanel("Background", canvas.transform, new Color(0.05f, 0.06f, 0.09f), false);
         SetRect(bg.GetComponent<RectTransform>(), 0, 1, 0, 1, 0, 0, 0, 0);
 
-        var leftPanel = CreatePanel("PlanningScenePanel", canvas.transform, new Color(0.14f, 0.16f, 0.22f, 0.95f));
+        var leftPanel = CreatePanel("PlanningScenePanel", canvas.transform, Color.clear);
         SetRect(leftPanel.GetComponent<RectTransform>(), 0.05f, 0.55f, 0.1f, 0.9f, 0, 0, 0, 0);
+        DungeonUITheme.ApplyPanel(leftPanel.GetComponent<Image>());
 
         var mapTitle = CreateText("MapTitle", leftPanel.transform, "[ RAID PLANNING TABLE ]", 24, FontStyles.Bold, TextAlignmentOptions.Center);
-        mapTitle.color = new Color(0.95f, 0.85f, 0.4f);
+        mapTitle.color = DungeonUITheme.Instance != null ? DungeonUITheme.Instance.accentGold : new Color(0.95f, 0.85f, 0.4f);
         SetRect(mapTitle.rectTransform, 0, 1, 1, 1, 0, -40, 0, 40);
 
         var mapDesc = CreateText("MapDesc", leftPanel.transform,
@@ -423,15 +424,22 @@ public static class DungeonCleanersBuilder
         SetRect(settingsBtn.GetComponent<RectTransform>(), 0.1f, 0.9f, 0, 0, 0, 85, 0, 54);
         ctrl.settingsButton = settingsBtn;
 
-        var settingsModal = CreatePanel("SettingsPanel", canvas.transform, new Color(0.14f, 0.16f, 0.22f, 0.98f));
+        var settingsModal = CreatePanel("SettingsPanel", canvas.transform, Color.clear);
         SetRect(settingsModal.GetComponent<RectTransform>(), 0.25f, 0.75f, 0.2f, 0.8f, 0, 0, 0, 0);
+        var setModalImg = settingsModal.GetComponent<Image>();
+        DungeonUITheme.ApplyPanel(setModalImg);
         ctrl.settingsPanel = settingsModal;
 
         var setHeader = CreateText("SettingsHeader", settingsModal.transform, "SETTINGS", 28, FontStyles.Bold, TextAlignmentOptions.Center);
+        setHeader.color = DungeonUITheme.Instance != null ? DungeonUITheme.Instance.accentGold : new Color(1f, 0.85f, 0.2f);
         SetRect(setHeader.rectTransform, 0, 1, 1, 1, 0, -40, 0, 40);
 
+        var reduceShakeToggle = CreateReduceShakeToggle(settingsModal.transform, 0f);
+        reduceShakeToggle.isOn = PlayerPrefs.GetInt("ReduceShakeAndFlashes", 0) == 1;
+        reduceShakeToggle.onValueChanged.AddListener(v => PlayerPrefs.SetInt("ReduceShakeAndFlashes", v ? 1 : 0));
+
         var closeSetBtn = CreateButton("CloseSettings", settingsModal.transform, "CLOSE", 18, new Color(0.76f, 0.24f, 0.26f));
-        SetRect(closeSetBtn.GetComponent<RectTransform>(), 0.35f, 0.65f, 0, 0, 0, 45, 0, 52);
+        SetRect(closeSetBtn.GetComponent<RectTransform>(), 0.35f, 0.65f, 0, 0, 0, -80, 0, 54);
         closeSetBtn.onClick.AddListener(() => settingsModal.SetActive(false));
 
         settingsModal.SetActive(false);
@@ -483,7 +491,7 @@ public static class DungeonCleanersBuilder
         var slotsContainer = CreatePanel("SlotsContainer", teamPanel.transform, Color.clear, false);
         SetRect(slotsContainer.GetComponent<RectTransform>(), 0.05f, 0.95f, 0.05f, 0.85f, 0, 0, 0, 0);
         var vlg = slotsContainer.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing = 15;
+        vlg.spacing = 12;
         vlg.childAlignment = TextAnchor.UpperCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = false;
@@ -667,19 +675,26 @@ public static class DungeonCleanersBuilder
         hlg.childAlignment = TextAnchor.MiddleCenter;
         ctrl.portraitContainer = portraitContainer.transform;
 
-        var pauseModal = CreatePanel("PausePanel", canvas.transform, new Color(0.14f, 0.16f, 0.22f, 0.98f));
+        var pauseModal = CreatePanel("PausePanel", canvas.transform, Color.clear);
         SetRect(pauseModal.GetComponent<RectTransform>(), 0.35f, 0.65f, 0.3f, 0.7f, 0, 0, 0, 0);
+        var pauseModalImg = pauseModal.GetComponent<Image>();
+        DungeonUITheme.ApplyPanel(pauseModalImg);
         ctrl.pausePanel = pauseModal;
 
         var pauseTitle = CreateText("Title", pauseModal.transform, "PAUSED", 32, FontStyles.Bold, TextAlignmentOptions.Center);
+        pauseTitle.color = DungeonUITheme.Instance != null ? DungeonUITheme.Instance.accentGold : new Color(1f, 0.85f, 0.2f);
         SetRect(pauseTitle.rectTransform, 0, 1, 1, 1, 0, -50, 0, 45);
 
         var resumeBtn = CreateButton("ResumeBtn", pauseModal.transform, "RESUME", 20, new Color(0.24f, 0.68f, 0.38f));
         SetRect(resumeBtn.GetComponent<RectTransform>(), 0.2f, 0.8f, 0.4f, 0.4f, 0, 30, 0, 54);
         ctrl.resumeButton = resumeBtn;
 
+        var reduceShakeToggle = CreateReduceShakeToggle(pauseModal.transform, -90f);
+        reduceShakeToggle.isOn = PlayerPrefs.GetInt("ReduceShakeAndFlashes", 0) == 1;
+        reduceShakeToggle.onValueChanged.AddListener(v => PlayerPrefs.SetInt("ReduceShakeAndFlashes", v ? 1 : 0));
+
         var quitBtn = CreateButton("QuitBtn", pauseModal.transform, "QUIT TO MENU", 18, new Color(0.76f, 0.24f, 0.26f));
-        SetRect(quitBtn.GetComponent<RectTransform>(), 0.2f, 0.8f, 0.4f, 0.4f, 0, -40, 0, 54);
+        SetRect(quitBtn.GetComponent<RectTransform>(), 0.2f, 0.8f, 0.4f, 0.4f, 0, -140, 0, 54);
         ctrl.quitButton = quitBtn;
         pauseModal.SetActive(false);
 
@@ -988,8 +1003,43 @@ public static class DungeonCleanersBuilder
 
         var text = CreateText("Label", go.transform, label, fontSize, FontStyles.Bold, TextAlignmentOptions.Center);
         SetRect(text.rectTransform, 0, 1, 0, 1, 0, 0, 0, 0);
+        DungeonUITheme.ApplyCtaText(text);
 
         return btn;
+    }
+
+    private static Toggle CreateReduceShakeToggle(Transform parent, float posY)
+    {
+        var row = CreateUIRoot("ReduceShakeToggleRow", 380, 54);
+        row.transform.SetParent(parent, false);
+        SetRect(row.GetComponent<RectTransform>(), 0.5f, 0.5f, 0.5f, 0.5f, 0, posY, 380, 54);
+        var rowImg = row.AddComponent<Image>();
+        rowImg.sprite = cardFrameSprite;
+        rowImg.type = Image.Type.Sliced;
+        rowImg.color = new Color(0.20f, 0.23f, 0.31f, 0.98f);
+
+        var lbl = CreateText("Label", row.transform, "Reduce Shake & Flashes", 15, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
+        SetRect(lbl.rectTransform, 0.03f, 0.72f, 0, 1, 10, 0, 0, 0);
+
+        var toggleObj = CreateUIRoot("Toggle", 40, 40);
+        toggleObj.transform.SetParent(row.transform, false);
+        SetRect(toggleObj.GetComponent<RectTransform>(), 1, 1, 0.5f, 0.5f, -30, 0, 40, 40);
+        var toggleBg = toggleObj.AddComponent<Image>();
+        toggleBg.sprite = btnNormalSprite;
+        toggleBg.type = Image.Type.Sliced;
+        toggleBg.color = new Color(0.32f, 0.36f, 0.44f);
+        var toggle = toggleObj.AddComponent<Toggle>();
+        toggle.targetGraphic = toggleBg;
+
+        var checkObj = CreateUIRoot("Checkmark", 24, 24);
+        checkObj.transform.SetParent(toggleObj.transform, false);
+        SetRect(checkObj.GetComponent<RectTransform>(), 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, 24, 24);
+        var checkImg = checkObj.AddComponent<Image>();
+        checkImg.sprite = barFillSprite;
+        checkImg.color = Color.green;
+        toggle.graphic = checkImg;
+
+        return toggle;
     }
 
     private static void ApplySpriteSwap(Button btn)

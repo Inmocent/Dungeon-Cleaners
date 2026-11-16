@@ -137,6 +137,7 @@ public class CombatCameraController : MonoBehaviour
     /// </summary>
     public void AddTrauma(float amount)
     {
+        if (PlayerPrefs.GetInt("ReduceShakeAndFlashes", 0) == 1) return;
         currentTrauma = Mathf.Clamp01(currentTrauma + amount);
     }
 

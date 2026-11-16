@@ -801,8 +801,9 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         rt.anchorMin = new Vector2(0.5f, 1f);
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
-        rt.anchoredPosition = new Vector2(0f, -50f);
-        rt.sizeDelta = new Vector2(380f, 24f);
+        rt.anchoredPosition = new Vector2(0f, -74f);
+        rt.sizeDelta = new Vector2(440f, 32f);
+        RegisterSafeArea(stakeTrackerRoot);
 
         var bg = stakeTrackerRoot.AddComponent<Image>();
         bg.color = new Color(0.04f, 0.08f, 0.16f, 0.94f);
@@ -820,11 +821,17 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         textRt.offsetMax = Vector2.zero;
 
         stakeTrackerText = textGo.AddComponent<TextMeshProUGUI>();
-        stakeTrackerText.fontSize = 11;
+        stakeTrackerText.fontSize = 14;
         stakeTrackerText.fontStyle = FontStyles.Bold;
         stakeTrackerText.alignment = TextAlignmentOptions.Center;
         stakeTrackerText.color = new Color(1f, 0.9f, 0.3f);
         stakeTrackerText.raycastTarget = false;
+    }
+
+    private void RegisterSafeArea(GameObject go)
+    {
+        if (go == null) return;
+        FindAnyObjectByType<MobileSafeArea>()?.RegisterRuntimeElement(go.GetComponent<RectTransform>());
     }
 
     private void UpdateStakeTrackerUI()
@@ -1125,7 +1132,11 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         // Ensure unified framed modal exists (supporting multi-purchase)
         EnsureRoomUpgradeModal(chosenThree, () => choiceMade = true);
 
-        if (roomUpgradeModal) roomUpgradeModal.SetActive(true);
+        if (roomUpgradeModal)
+        {
+            roomUpgradeModal.SetActive(true);
+            StartCoroutine(ModalDoubleTapGuard(roomUpgradeModal));
+        }
 
         // Wait for player to click Done / Proceed
         while (!choiceMade)
@@ -1191,7 +1202,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         winRt.anchorMax = new Vector2(0.5f, 0.5f);
         winRt.pivot = new Vector2(0.5f, 0.5f);
         winRt.anchoredPosition = Vector2.zero;
-        winRt.sizeDelta = new Vector2(960f, 550f);
+        winRt.sizeDelta = new Vector2(1120f, 680f);
 
         var winBg = windowGo.AddComponent<Image>();
         DungeonUITheme.ApplyPanel(winBg, theme != null ? theme.panelSlate : new Color(0.14f, 0.16f, 0.22f, 0.98f));
@@ -1274,9 +1285,9 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         goldTmp.raycastTarget = false;
 
         // 3 Vertical Upgrade Option Cards (Cards layout matching user sketch)
-        float cardWidth = 280f;
-        float cardHeight = 335f;
-        float spacing = 22f;
+        float cardWidth = 320f;
+        float cardHeight = 400f;
+        float spacing = 32f;
         float totalWidth = (cardWidth * 3) + (spacing * 2);
         float startX = -totalWidth * 0.5f + cardWidth * 0.5f;
 
@@ -1284,13 +1295,19 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         Image[] cardBgs = new Image[options.Count];
         Button[] cardBtns = new Button[options.Count];
         TextMeshProUGUI[] cardBtnLabels = new TextMeshProUGUI[options.Count];
+        int freePickIndex = -1;
+
+        int CardCost(int k)
+        {
+            return (k == freePickIndex) ? 0 : options[k].cost;
+        }
 
         int GetSelectedTotalCost()
         {
             int sum = 0;
             for (int k = 0; k < options.Count && k < 3; k++)
             {
-                if (isSelected[k]) sum += options[k].cost;
+                if (isSelected[k]) sum += CardCost(k);
             }
             return sum;
         }
@@ -1307,7 +1324,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             if (goldTmp != null)
             {
                 if (totalSelected > 0)
-                    goldTmp.text = $"<b>GOLD: {currentG}G</b> <size=13><color=#F87171>(-{totalSelected}G)</color> -> <color=#34D399>{remainingG}G</color></size>";
+                    goldTmp.text = $"<b>GOLD: {currentG}G</b> <size=14><color=#F87171>(-{totalSelected}G)</color> -> <color=#34D399>{remainingG}G</color></size>";
                 else
                     goldTmp.text = $"<b>GOLD: {currentG}G</b>";
             }
@@ -1319,15 +1336,19 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 if (isSelected[k])
                 {
                     cardBgs[k].color = new Color(0.28f, 0.42f, 0.54f, 1f);
-                    cardBtnLabels[k].text = "<b>[ SELECTED ]</b>\n<size=12>Tap to Deselect</size>";
+                    cardBtnLabels[k].text = "<b>[ SELECTED ]</b>\n<size=14>Tap to Deselect</size>";
                     DungeonUITheme.ApplyButton(cardBtns[k], theme != null ? theme.btnPrimaryGreen : new Color(0.24f, 0.68f, 0.38f), true);
                 }
                 else
                 {
                     cardBgs[k].color = theme != null ? theme.cardBaseTint : new Color(0.20f, 0.23f, 0.31f, 0.98f);
-                    bool canAfford = remainingG >= options[k].cost;
+                    int displayCost = options[k].cost;
+                    bool canAfford = remainingG >= displayCost || freePickIndex == -1;
                     string prefix = options[k].isInvestment ? "INVEST" : "SELECT";
-                    cardBtnLabels[k].text = canAfford ? $"<b>{prefix} ({options[k].cost}G)</b>" : $"<b>LOCKED ({options[k].cost}G)</b>";
+                    string costLabel = (freePickIndex == -1) ? "FREE" : $"{displayCost}G";
+                    cardBtnLabels[k].text = canAfford
+                        ? $"<b>{prefix} ({costLabel})</b>"
+                        : $"<b>LOCKED ({displayCost}G)</b>";
                     Color bTint = canAfford ? (theme != null ? theme.btnArcaneBlue : new Color(0.24f, 0.48f, 0.84f)) : (theme != null ? theme.btnDangerRed : new Color(0.76f, 0.24f, 0.26f));
                     DungeonUITheme.ApplyButton(cardBtns[k], bTint, false);
                 }
@@ -1370,12 +1391,12 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             var cardTextGo = new GameObject("CardBody", typeof(RectTransform));
             cardTextGo.transform.SetParent(cardGo.transform, false);
             var cardTmp = cardTextGo.AddComponent<TextMeshProUGUI>();
-            cardTmp.text = $"<size=32>{opt.icon}</size>\n\n<color=#FCD34D><b><size=18>{opt.title}</size></b></color>\n\n<size=14><color=#E2E8F0>{opt.description}</color></size>\n\n<color=#FBBF24><b>PRICE: {opt.cost} GOLD</b></color>";
-            cardTmp.fontSize = 15;
+            cardTmp.fontSize = 16;
             cardTmp.alignment = TextAlignmentOptions.Center;
             cardTmp.textWrappingMode = TextWrappingModes.Normal;
             cardTmp.overflowMode = TextOverflowModes.Overflow;
             cardTmp.raycastTarget = false;
+            cardTmp.text = $"<size=32>{opt.icon}</size>\n\n<color=#FCD34D><b><size=18>{opt.title}</size></b></color>\n\n<color=#E2E8F0>{opt.description}</color>\n\n<color=#FBBF24><b>PRICE: {opt.cost} GOLD</b></color>";
             var textRt = cardTextGo.GetComponent<RectTransform>();
             textRt.anchorMin = new Vector2(0.08f, 0.24f);
             textRt.anchorMax = new Vector2(0.92f, 0.92f);
@@ -1403,7 +1424,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             btnTextRt.offsetMax = Vector2.zero;
 
             var btnTmp = btnTextGo.AddComponent<TextMeshProUGUI>();
-            btnTmp.fontSize = 15;
+            btnTmp.fontSize = 16;
             btnTmp.fontStyle = FontStyles.Bold;
             btnTmp.alignment = TextAlignmentOptions.Center;
             btnTmp.color = Color.white;
@@ -1419,16 +1440,19 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 if (isSelected[idx])
                 {
                     isSelected[idx] = false;
+                    if (freePickIndex == idx) freePickIndex = -1;
                     RefreshCardStates();
                     return;
                 }
 
                 int currentG = GameRunData.Instance?.gold ?? 0;
+                int effectiveCost = (freePickIndex == -1) ? 0 : opt.cost;
                 int currentTotal = GetSelectedTotalCost();
-                if (currentTotal + opt.cost > currentG)
+                if (currentTotal + effectiveCost > currentG)
                 {
-                    int needed = (currentTotal + opt.cost) - currentG;
-                    ShowCyberpunkDialogue("FIXER // KIRA", $"Not enough gold, Cleaner! Selecting this requires {opt.cost}G (Total: {currentTotal + opt.cost}G), but you only have {currentG}G.");
+                    int needed = (currentTotal + effectiveCost) - currentG;
+                    string costDesc = effectiveCost == 0 ? "free (first pick)" : $"{effectiveCost}G";
+                    ShowCyberpunkDialogue("FIXER // KIRA", $"Not enough gold, Cleaner! Selecting this requires {costDesc} (Total: {currentTotal + effectiveCost}G), but you only have {currentG}G.");
                     if (dialogueBoxRoot != null) dialogueBoxRoot.transform.SetAsLastSibling();
                     ShowScreenAnnouncement($"KIRA: 'Insufficient gold! Need +{needed}G more (You have {currentG}G)!'", Color.red);
                     CombatCameraController.Instance?.AddTrauma(0.18f);
@@ -1436,6 +1460,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 }
 
                 isSelected[idx] = true;
+                if (freePickIndex == -1) freePickIndex = idx;
                 RefreshCardStates();
             }
 
@@ -1466,13 +1491,14 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
         proceedTmp = proceedTextGo.AddComponent<TextMeshProUGUI>();
         proceedTmp.text = "<b>PROCEED TO CORRIDOR (SAVE GOLD) >></b>";
-        proceedTmp.fontSize = 15;
+        proceedTmp.fontSize = 16;
         proceedTmp.fontStyle = FontStyles.Bold;
         proceedTmp.alignment = TextAlignmentOptions.Center;
         proceedTmp.color = Color.white;
         proceedTmp.textWrappingMode = TextWrappingModes.NoWrap;
         proceedTmp.overflowMode = TextOverflowModes.Overflow;
         proceedTmp.raycastTarget = false;
+        DungeonUITheme.ApplyCtaText(proceedTmp);
 
         proceedBtnRef.onClick.AddListener(() =>
         {
@@ -1609,7 +1635,11 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         }
 
         BuildModal();
-        if (bossClearModal) bossClearModal.SetActive(true);
+        if (bossClearModal)
+        {
+            bossClearModal.SetActive(true);
+            StartCoroutine(ModalDoubleTapGuard(bossClearModal));
+        }
 
         while (!choiceMade)
         {
@@ -1664,7 +1694,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         winRt.anchorMax = new Vector2(0.5f, 0.5f);
         winRt.pivot = new Vector2(0.5f, 0.5f);
         winRt.anchoredPosition = Vector2.zero;
-        winRt.sizeDelta = new Vector2(920f, 520f);
+        winRt.sizeDelta = new Vector2(1120f, 680f);
 
         var theme = DungeonUITheme.Instance;
 
@@ -1720,8 +1750,8 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         titleRt.sizeDelta = new Vector2(-330f, 60f);
 
         var titleTmp = titleTextGo.AddComponent<TextMeshProUGUI>();
-        titleTmp.text = "<color=#38BDF8><b>KIRA // TACTICAL ADVISOR</b></color>\n<size=20><color=#FCD34D><b>LEVEL CLEARED! CHOOSE LEVEL UPGRADE</b></color></size> <size=13><color=#94A3B8>— Boss Defeated</color></size>";
-        titleTmp.fontSize = 13;
+        titleTmp.text = "<color=#38BDF8><b>KIRA // TACTICAL ADVISOR</b></color>\n<size=20><color=#FCD34D><b>LEVEL CLEARED! CHOOSE LEVEL UPGRADE</b></color></size> <size=14><color=#94A3B8>— Boss Defeated</color></size>";
+        titleTmp.fontSize = 14;
         titleTmp.alignment = TextAlignmentOptions.Left;
         titleTmp.raycastTarget = false;
 
@@ -1759,7 +1789,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         slainRt.offsetMax = Vector2.zero;
         var slainTmp = slainGo.AddComponent<TextMeshProUGUI>();
         slainTmp.text = "<b><color=#EF4444>SLAIN</color></b>";
-        slainTmp.fontSize = 9;
+        slainTmp.fontSize = 14;
         slainTmp.alignment = TextAlignmentOptions.Center;
         slainTmp.raycastTarget = false;
 
@@ -1782,9 +1812,9 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         goldTmp.raycastTarget = false;
 
         // 3 Cards Layout inside Window
-        float cardWidth = 265f;
-        float cardHeight = 310f;
-        float spacing = 20f;
+        float cardWidth = 320f;
+        float cardHeight = 400f;
+        float spacing = 32f;
         float totalWidth = (cardWidth * 3) + (spacing * 2);
         float startX = -totalWidth * 0.5f + cardWidth * 0.5f;
 
@@ -1834,8 +1864,8 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             badgeTextRt.offsetMin = Vector2.zero;
             badgeTextRt.offsetMax = Vector2.zero;
             var badgeTmp = badgeTextGo.AddComponent<TextMeshProUGUI>();
-            badgeTmp.text = isSelected ? "<b><color=#38BDF8>[ SELECTED ]</color></b>" : "<color=#64748B>[ TAP TO SELECT ]</color>";
-            badgeTmp.fontSize = 13;
+            badgeTmp.text = isSelected ? "<b><color=#38BDF8>[ SELECTED ]</color></b>" : "<color=#94A3B8>[ TAP TO SELECT ]</color>";
+            badgeTmp.fontSize = 14;
             badgeTmp.alignment = TextAlignmentOptions.Center;
             cardBadges.Add(badgeTmp);
 
@@ -1847,7 +1877,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 {
                     bool sel = (k == upgradeSelectedCardIdx);
                     cardBgs[k].color = sel ? new Color(0.24f, 0.38f, 0.54f, 1f) : (theme != null ? theme.cardBaseTint : new Color(0.20f, 0.23f, 0.31f, 0.98f));
-                    cardBadges[k].text = sel ? "<b><color=#38BDF8>[ SELECTED ]</color></b>" : "<color=#64748B>[ TAP TO SELECT ]</color>";
+                    cardBadges[k].text = sel ? "<b><color=#38BDF8>[ SELECTED ]</color></b>" : "<color=#94A3B8>[ TAP TO SELECT ]</color>";
                 }
             });
         }
@@ -1888,11 +1918,12 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         confirmTextRt.offsetMax = Vector2.zero;
         var confirmTmp = confirmTextGo.AddComponent<TextMeshProUGUI>();
         confirmTmp.text = "<b>CONFIRM UPGRADE</b>";
-        confirmTmp.fontSize = 15;
+        confirmTmp.fontSize = 16;
         confirmTmp.fontStyle = FontStyles.Bold;
         confirmTmp.alignment = TextAlignmentOptions.Center;
         confirmTmp.color = Color.white;
         confirmTmp.raycastTarget = false;
+        DungeonUITheme.ApplyCtaText(confirmTmp);
 
         const int REROLL_COST = 25;
         var rerollGo = new GameObject("RerollBtn", typeof(RectTransform));
@@ -2103,14 +2134,14 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         gridRt.anchorMin = new Vector2(0.5f, 0.5f);
         gridRt.anchorMax = new Vector2(0.5f, 0.5f);
         gridRt.anchoredPosition = new Vector2(-120f, -20f);
-        gridRt.sizeDelta = new Vector2(480f, 480f);
+        gridRt.sizeDelta = new Vector2(548f, 548f);
 
         var gridBg = gridRoot.AddComponent<Image>();
         gridBg.color = new Color(0.08f, 0.1f, 0.14f, 0.9f);
 
         var gridLayout = gridRoot.AddComponent<GridLayoutGroup>();
-        gridLayout.cellSize = new Vector2(140f, 140f);
-        gridLayout.spacing = new Vector2(14f, 14f);
+        gridLayout.cellSize = new Vector2(160f, 160f);
+        gridLayout.spacing = new Vector2(18f, 18f);
         gridLayout.childAlignment = TextAnchor.MiddleCenter;
 
         // Build 9 Grid Slots
@@ -2135,7 +2166,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             labelRt.offsetMax = Vector2.zero;
 
             var labelTmp = labelGo.AddComponent<TextMeshProUGUI>();
-            labelTmp.fontSize = 15;
+            labelTmp.fontSize = 16;
             labelTmp.fontStyle = FontStyles.Bold;
             labelTmp.alignment = TextAlignmentOptions.Center;
             labelTmp.raycastTarget = false;
@@ -2150,7 +2181,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             hpRt.offsetMax = Vector2.zero;
 
             var hpTmp = hpGo.AddComponent<TextMeshProUGUI>();
-            hpTmp.fontSize = 13;
+            hpTmp.fontSize = 14;
             hpTmp.alignment = TextAlignmentOptions.Center;
             hpTmp.raycastTarget = false;
             slotUI.hpLabel = hpTmp;
@@ -2787,11 +2818,11 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             rt.pivot = new Vector2(0.5f, 1f);
             rt.anchorMin = new Vector2(0.5f, 1f);
             rt.anchorMax = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, -22f);
-            rt.sizeDelta = new Vector2(750f, 44f);
+            rt.anchoredPosition = new Vector2(0f, -14f);
+            rt.sizeDelta = new Vector2(580f, 54f);
             roomLabel.alignment = TextAlignmentOptions.Top;
             roomLabel.textWrappingMode = TextWrappingModes.NoWrap;
-            roomLabel.overflowMode = TextOverflowModes.Overflow;
+            roomLabel.overflowMode = TextOverflowModes.Ellipsis;
             roomLabel.fontSize = 14;
         }
 
@@ -2800,11 +2831,11 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             var grt = goldLabel.rectTransform;
             if (grt != null)
             {
-                grt.pivot = new Vector2(0.5f, 1f);
-                grt.anchorMin = new Vector2(0.5f, 1f);
-                grt.anchorMax = new Vector2(0.5f, 1f);
-                grt.anchoredPosition = new Vector2(-420f, -22f);
-                grt.sizeDelta = new Vector2(180f, 44f);
+                grt.pivot = new Vector2(0f, 1f);
+                grt.anchorMin = new Vector2(0f, 1f);
+                grt.anchorMax = new Vector2(0f, 1f);
+                grt.anchoredPosition = new Vector2(164f, -14f);
+                grt.sizeDelta = new Vector2(176f, 54f);
             }
         }
 
@@ -2828,17 +2859,17 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             {
                 if (i == currentRoomIndex) track.Append("<color=#EF4444><b>[BOSS]</b></color>");
                 else if (i < currentRoomIndex) track.Append("<color=#10B981>[*]</color>");
-                else track.Append("<color=#64748B>[BOSS]</color>");
+                else track.Append("<color=#94A3B8>[BOSS]</color>");
             }
             else
             {
                 if (i < currentRoomIndex) track.Append("<color=#10B981>[x]</color> ");
                 else if (i == currentRoomIndex) track.Append("<color=#FCD34D><b>[>]</b></color> ");
-                else track.Append("<color=#64748B>[ ]</color> ");
+                else track.Append("<color=#94A3B8>[ ]</color> ");
             }
         }
 
-        roomLabel.text = $"<size=15><b><color=#38BDF8>FLOOR {floorNum}/{totalFloors}</color></b>   <color=#64748B>|</color>   <b><color=#FCD34D>ROOM {currentR}/{totalR}</color></b>   <color=#CBD5E1>• {roomName}</color></size>\n<size=12><color=#94A3B8>PATH:</color> {track}</size>";
+        roomLabel.text = $"<size=18><b><color=#38BDF8>FLOOR {floorNum}/{totalFloors}</color></b>   <color=#94A3B8>|</color>   <b><color=#FCD34D>ROOM {currentR}/{totalR}</color></b>   <color=#CBD5E1>• {roomName}</color></size>\n<size=14><color=#94A3B8>PATH:</color> {track}</size>";
     }
 
     // =========================================================================
@@ -2871,6 +2902,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         {
             routeChoiceModal.transform.SetAsLastSibling();
             routeChoiceModal.SetActive(true);
+            StartCoroutine(ModalDoubleTapGuard(routeChoiceModal));
         }
 
         while (!choiceMade)
@@ -2965,9 +2997,9 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             titleRt.offsetMax = Vector2.zero;
 
             // 2 Cards Layout (Left vs Right)
-            float cardWidth = 330f;
-            float cardHeight = 280f;
-            float spacing = 40f;
+            float cardWidth = 380f;
+            float cardHeight = 380f;
+            float spacing = 48f;
 
             RouteOption[] options = new RouteOption[] { nextRoom.routeOptionA, nextRoom.routeOptionB };
             float[] xPositions = new float[] { -(cardWidth * 0.5f + spacing * 0.5f), (cardWidth * 0.5f + spacing * 0.5f) };
@@ -3014,10 +3046,11 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 headerLabelRt.offsetMax = Vector2.zero;
                 var headerTmp = headerLabelGo.AddComponent<TextMeshProUGUI>();
                 headerTmp.text = $"<b>{opt.pathName ?? (i == 0 ? "NORTH ROUTE" : "DIRECT PASSAGE")}</b>";
-                headerTmp.fontSize = 15;
+                headerTmp.fontSize = 18;
                 headerTmp.alignment = TextAlignmentOptions.Center;
                 headerTmp.color = Color.white;
                 headerTmp.raycastTarget = false;
+                DungeonUITheme.ApplyCtaText(headerTmp);
 
                 // Card Body Text
                 var bodyGo = new GameObject("BodyText", typeof(RectTransform));
@@ -3029,13 +3062,13 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
                 bodyRt.offsetMax = Vector2.zero;
 
                 var bodyTmp = bodyGo.AddComponent<TextMeshProUGUI>();
-                bodyTmp.text = $"<size=19><color=#FCD34D><b>{opt.title ?? "CHAMBER"}</b></color></size>\n\n" +
-                               $"<size=14><color=#E2E8F0>Encounter: <b>{opt.enemyPreview ?? "Hostiles"}</b></color>\n\n" +
-                               $"<color=#F87171>Hazards: <b>{opt.hazardNotice ?? "None"}</b></color>\n\n" +
-                               $"<color=#34D399>Rewards: <b>{opt.rewardPreview ?? "+50 Gold"}</b></color></size>";
-                bodyTmp.fontSize = 14;
+                bodyTmp.fontSize = 16;
                 bodyTmp.alignment = TextAlignmentOptions.Center;
                 bodyTmp.raycastTarget = false;
+                string encounterLine = $"<color=#E2E8F0>Encounter: <b>{opt.enemyPreview ?? "Hostiles"}</b></color>";
+                string hazardLine = $"<color=#F87171>Hazards: <b>{opt.hazardNotice ?? "None"}</b></color>";
+                string rewardLine = $"<color=#34D399>Rewards: <b>{opt.rewardPreview ?? "+50 Gold"}</b></color>";
+                bodyTmp.text = $"<size=19><color=#FCD34D><b>{opt.title ?? "CHAMBER"}</b></color></size>\n\n{encounterLine}\n\n{hazardLine}\n\n{rewardLine}";
 
                 // Select Button
                 var btnGo = new GameObject("SelectBtn", typeof(RectTransform));
@@ -3060,11 +3093,12 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
                 var btnTmp = btnTextGo.AddComponent<TextMeshProUGUI>();
                 btnTmp.text = $"ADVANCE: {opt.pathName ?? "ROUTE"} >>";
-                btnTmp.fontSize = 13;
+                btnTmp.fontSize = 16;
                 btnTmp.fontStyle = FontStyles.Bold;
                 btnTmp.alignment = TextAlignmentOptions.Center;
                 btnTmp.color = Color.white;
                 btnTmp.raycastTarget = false;
+                DungeonUITheme.ApplyCtaText(btnTmp);
 
                 var cardBtn = cardGo.AddComponent<Button>();
 
@@ -3145,15 +3179,20 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         Canvas canvas = pauseButton != null ? pauseButton.GetComponentInParent<Canvas>() : FindAnyObjectByType<Canvas>();
         if (canvas == null) return;
 
+        Transform parent = canvas.transform;
+        var bottomPanel = GameObject.Find("BottomPanel");
+        if (bottomPanel != null) parent = bottomPanel.transform;
+
         quickBuffBarRoot = new GameObject("QuickBuffBar", typeof(RectTransform));
-        quickBuffBarRoot.transform.SetParent(canvas.transform, false);
+        quickBuffBarRoot.transform.SetParent(parent, false);
 
         var rootRt = quickBuffBarRoot.GetComponent<RectTransform>();
         rootRt.anchorMin = new Vector2(0f, 0f);
         rootRt.anchorMax = new Vector2(0f, 0f);
         rootRt.pivot = new Vector2(0f, 0f);
-        rootRt.anchoredPosition = new Vector2(16f, 185f);
-        rootRt.sizeDelta = new Vector2(344f, 76f);
+        rootRt.anchoredPosition = new Vector2(20f, 20f);
+        rootRt.sizeDelta = new Vector2(316f, 136f);
+        RegisterSafeArea(quickBuffBarRoot);
 
         // Container background with cyber styling
         var bg = quickBuffBarRoot.AddComponent<Image>();
@@ -3175,24 +3214,24 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
         var titleTmp = titleGo.AddComponent<TextMeshProUGUI>();
         titleTmp.text = "<b>⚡ TACTICAL QUICK-BUFFS</b>";
-        titleTmp.fontSize = 11;
+        titleTmp.fontSize = 16;
         titleTmp.alignment = TextAlignmentOptions.Left;
         titleTmp.color = new Color(0.98f, 0.85f, 0.35f, 1f);
         titleTmp.raycastTarget = false;
 
-        // Create 3 mini cards
-        float cardWidth = 102f;
-        float cardHeight = 48f;
+        // Create 3 mini cards (92×108 with 8px spacing fits inside 316×136 root)
+        float cardWidth = 92f;
+        float cardHeight = 108f;
         float spacing = 8f;
         float startX = 8f;
-        float yPos = 8f;
+        float yPos = 20f;
 
         // Card 1: POWER (40g)
         powerBuffBtn = CreateQuickBuffCard(
             quickBuffBarRoot.transform,
             new Vector2(startX, yPos),
             new Vector2(cardWidth, cardHeight),
-            "<b>⚡ POWER</b>\n<size=9>+35% ATK</size>",
+            "<b>⚡ POWER</b>\n<size=14>+35% ATK</size>",
             $"{GameRunData.POWER_BUFF_COST}g",
             new Color(0.65f, 0.22f, 0.18f, 1f),
             out powerBuffCostText,
@@ -3205,7 +3244,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             quickBuffBarRoot.transform,
             new Vector2(startX + cardWidth + spacing, yPos),
             new Vector2(cardWidth, cardHeight),
-            "<b>⏩ SPEED</b>\n<size=9>+40% SPD</size>",
+            "<b>⏩ SPEED</b>\n<size=14>+40% SPD</size>",
             $"{GameRunData.SPEED_BUFF_COST}g",
             new Color(0.18f, 0.42f, 0.72f, 1f),
             out speedBuffCostText,
@@ -3218,7 +3257,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             quickBuffBarRoot.transform,
             new Vector2(startX + (cardWidth + spacing) * 2, yPos),
             new Vector2(cardWidth, cardHeight),
-            "<b>💖 REVIVE</b>\n<size=9>50% HP</size>",
+            "<b>💖 REVIVE</b>\n<size=14>50% HP</size>",
             $"{GameRunData.REVIVE_BUFF_COST}g",
             new Color(0.14f, 0.55f, 0.28f, 1f),
             out reviveBuffCostText,
@@ -3272,7 +3311,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
         var labelTmp = labelGo.AddComponent<TextMeshProUGUI>();
         labelTmp.text = mainText;
-        labelTmp.fontSize = 11;
+        labelTmp.fontSize = 16;
         labelTmp.alignment = TextAlignmentOptions.Center;
         labelTmp.color = Color.white;
         labelTmp.raycastTarget = false;
@@ -3288,7 +3327,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
         var costTmp = costGo.AddComponent<TextMeshProUGUI>();
         costTmp.text = $"<color=#FCD34D><b>{defaultCostText}</b></color>";
-        costTmp.fontSize = 11;
+        costTmp.fontSize = 14;
         costTmp.alignment = TextAlignmentOptions.Center;
         costTmp.raycastTarget = false;
         costTextOut = costTmp;
@@ -3430,7 +3469,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         if (!hasDeadHero)
         {
             if (reviveBuffBg) reviveBuffBg.color = new Color(0.22f, 0.24f, 0.28f, 0.7f);
-            if (reviveBuffCostText) reviveBuffCostText.text = "<color=#64748B>FULL HP</color>";
+            if (reviveBuffCostText) reviveBuffCostText.text = "<color=#94A3B8>FULL HP</color>";
         }
         else
         {
@@ -3504,8 +3543,9 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         rt.anchorMin = new Vector2(0f, 1f);
         rt.anchorMax = new Vector2(0f, 1f);
         rt.pivot = new Vector2(0f, 1f);
-        rt.anchoredPosition = new Vector2(24f, -75f);
-        rt.sizeDelta = new Vector2(520f, 120f);
+        rt.anchoredPosition = new Vector2(24f, -100f);
+        rt.sizeDelta = new Vector2(420f, 64f);
+        RegisterSafeArea(dialogueBoxRoot);
 
         // Dark slate backdrop with pixel-art theme
         var bg = dialogueBoxRoot.AddComponent<Image>();
@@ -3628,6 +3668,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = new Vector2(0f, -78f);
         rt.sizeDelta = new Vector2(620f, 54f);
+        RegisterSafeArea(bossAlertBannerRoot);
 
         var bg = bossAlertBannerRoot.AddComponent<Image>();
         DungeonUITheme.ApplyPanel(bg, new Color(0.20f, 0.08f, 0.10f, 0.96f));
@@ -3725,6 +3766,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         rt.pivot = new Vector2(1f, 1f);
         rt.anchoredPosition = new Vector2(-15f, -95f);
         rt.sizeDelta = new Vector2(580f, 56f);
+        RegisterSafeArea(screenAnnouncementBannerRoot);
 
         var bg = screenAnnouncementBannerRoot.AddComponent<Image>();
         DungeonUITheme.ApplyPanel(bg, new Color(0.04f, 0.07f, 0.14f, 0.96f));
@@ -3810,6 +3852,26 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
     private int marketSelectedRecruitIdx = -1;
     private int marketSelectedSquadIdx = -1;
 
+    /// <summary>
+    /// Swallows taps for the first 0.25s a modal opens so a double-tap from the previous
+    /// screen can't accidentally commit an action on the newly-shown modal.
+    /// </summary>
+    IEnumerator ModalDoubleTapGuard(GameObject modal)
+    {
+        if (modal == null) yield break;
+        var cg = modal.GetComponent<CanvasGroup>();
+        if (cg == null) cg = modal.AddComponent<CanvasGroup>();
+
+        cg.blocksRaycasts = false;
+        float t = 0f;
+        while (t < 0.25f && modal != null && modal.activeInHierarchy)
+        {
+            t += Time.unscaledDeltaTime;
+            yield return null;
+        }
+        if (cg != null) cg.blocksRaycasts = true;
+    }
+
     IEnumerator PresentMercenaryMarketModal()
     {
         bool marketDone = false;
@@ -3820,7 +3882,11 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
         BuildMercenaryMarketModal(() => marketDone = true);
 
-        if (mercenaryMarketModal) mercenaryMarketModal.SetActive(true);
+        if (mercenaryMarketModal)
+        {
+            mercenaryMarketModal.SetActive(true);
+            StartCoroutine(ModalDoubleTapGuard(mercenaryMarketModal));
+        }
 
         ShowCyberpunkDialogue("FIXER // KIRA", "Boss eliminated! The black market exchange is open. Swap out wounded or fatigued operatives for fresh combat mercenaries!");
 
@@ -3933,7 +3999,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
         var titleGo = new GameObject("HeaderTitle");
         titleGo.transform.SetParent(mercenaryMarketModal.transform, false);
         var titleTmp = titleGo.AddComponent<TextMeshProUGUI>();
-        titleTmp.text = $"<size=22><color=#FCD34D><b>POST-BOSS MERCENARY EXCHANGE</b></color></size>\n<size=13><color=#94A3B8>Swap exhausted squad heroes for fresh black-market combat mercenaries</color></size>";
+        titleTmp.text = $"<size=22><color=#FCD34D><b>POST-BOSS MERCENARY EXCHANGE</b></color></size>\n<size=14><color=#94A3B8>Swap exhausted squad heroes for fresh black-market combat mercenaries</color></size>";
         titleTmp.fontSize = 22;
         titleTmp.fontStyle = FontStyles.Bold;
         titleTmp.alignment = TextAlignmentOptions.Center;
@@ -4109,7 +4175,7 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
             bTextRt.offsetMax = Vector2.zero;
             var bTmp = bTextGo.AddComponent<TextMeshProUGUI>();
             bTmp.text = c.heroClass switch { HeroClass.Knight => "⚔", HeroClass.Mage => "✦", HeroClass.Healer => "✚", _ => "●" };
-            bTmp.fontSize = 12;
+            bTmp.fontSize = 14;
             bTmp.alignment = TextAlignmentOptions.Center;
             bTmp.color = c.classColor;
             bTmp.raycastTarget = false;
@@ -4125,10 +4191,10 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
             var cTmp = cTxtGo.AddComponent<TextMeshProUGUI>();
             string selPrefix = isSel ? "▶ " : "";
-            cTmp.text = $"<b>{selPrefix}<color=#FCD34D>{c.name}</color></b> <size=11><color=#94A3B8>[{c.heroClass}]</color></size>  •  <color=#FCD34D><b>{c.hireCost}g</b></color>\n" +
-                        $"<size=11>HP: {c.maxHP} | ATK: {c.attackDamage} | EN: {c.maxEnergy}</size>\n" +
-                        $"<size=10><color=#34D399>{c.specialty}</color></size>";
-            cTmp.fontSize = 12;
+            cTmp.text = $"<b>{selPrefix}<color=#FCD34D>{c.name}</color></b> <size=14><color=#94A3B8>[{c.heroClass}]</color></size>  •  <color=#FCD34D><b>{c.hireCost}g</b></color>\n" +
+                        $"<size=14>HP: {c.maxHP} | ATK: {c.attackDamage} | EN: {c.maxEnergy}</size>\n" +
+                        $"<size=14><color=#34D399>{c.specialty}</color></size>";
+            cTmp.fontSize = 14;
             cTmp.raycastTarget = false;
         }
 
@@ -4218,9 +4284,9 @@ public class DungeonCombatController : MonoBehaviour, ICombatController
 
             var sTmp = sTxtGo.AddComponent<TextMeshProUGUI>();
             string selPrefix = isSel ? "▶ " : "";
-            sTmp.text = $"<b>{selPrefix}{hero.displayName}</b> <size=11><color=#94A3B8>[{hero.data.heroClass}]</color></size>\n" +
-                        $"<size=11>HP: {hero.currentHP}/{hero.data.maxHP} | EN: {hero.currentEnergy}/{hero.data.maxEnergy}</size>";
-            sTmp.fontSize = 12;
+            sTmp.text = $"<b>{selPrefix}{hero.displayName}</b> <size=14><color=#94A3B8>[{hero.data.heroClass}]</color></size>\n" +
+                        $"<size=14>HP: {hero.currentHP}/{hero.data.maxHP} | EN: {hero.currentEnergy}/{hero.data.maxEnergy}</size>";
+            sTmp.fontSize = 14;
             sTmp.raycastTarget = false;
         }
 

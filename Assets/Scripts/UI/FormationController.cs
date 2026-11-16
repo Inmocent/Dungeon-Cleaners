@@ -43,6 +43,10 @@ public class FormationController : MonoBehaviour
     // Tap-to-swap selection state
     private int selectedSlotIndex = -1;
 
+    // Battle lock feedback pill
+    private GameObject battleLockPill;
+    private TextMeshProUGUI battleLockPillText;
+
     void Start()
     {
         Time.timeScale = 1f;
@@ -54,7 +58,7 @@ public class FormationController : MonoBehaviour
 
         if (battleButton != null)
         {
-            battleButton.interactable = false;
+            battleButton.interactable = true; // remains tappable so locked feedback can fire
             battleButton.onClick.AddListener(OnBattle);
         }
 
@@ -77,6 +81,7 @@ public class FormationController : MonoBehaviour
         BuildGrid();
         LoadBench();
         RestoreOrAutoDeploy();
+        CreateBattleLockPill();
     }
 
     void OnBack()
@@ -120,6 +125,12 @@ public class FormationController : MonoBehaviour
         for (int i = 0; i < 9; i++)
         {
             var go = Instantiate(gridSlotPrefab, gridContainer);
+            var le = go.GetComponent<LayoutElement>();
+            if (le == null) le = go.AddComponent<LayoutElement>();
+            le.minWidth = 160f; le.minHeight = 160f;
+            le.preferredWidth = 160f; le.preferredHeight = 160f;
+            var rt = go.GetComponent<RectTransform>();
+            if (rt != null) rt.sizeDelta = new Vector2(160f, 160f);
             var slot = go.GetComponent<GridSlotUI>();
             int idx = i;
             slot.Setup(idx, null, OnGridSlotTapped, OnHeroDrop);
@@ -332,16 +343,123 @@ public class FormationController : MonoBehaviour
     {
         int filled = 0;
         foreach (var h in formation) if (h != null) filled++;
+        int needed = GameRunData.Instance?.squad.Count ?? 0;
+        bool ready = filled == needed;
+
         if (battleButton != null)
         {
-            battleButton.interactable = filled == GameRunData.Instance?.squad.Count;
+            // Never disable: a dead button swallows taps silently. Tint + feedback instead.
+            var btnImg = battleButton.GetComponent<UnityEngine.UI.Image>();
+            if (btnImg != null)
+                btnImg.color = ready ? new Color(0.24f, 0.68f, 0.38f, 1f) : new Color(0.38f, 0.40f, 0.46f, 1f);
+        }
+
+        UpdateBattleLockPill(ready, filled, needed);
+    }
+
+    void CreateBattleLockPill()
+    {
+        if (battleButton == null) return;
+
+        var parent = battleButton.transform.parent;
+        if (parent == null) return;
+
+        battleLockPill = new GameObject("BattleLockPill", typeof(RectTransform), typeof(CanvasGroup));
+        battleLockPill.transform.SetParent(parent, false);
+
+        var rt = battleLockPill.GetComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(240f, 40f);
+
+        var img = battleLockPill.AddComponent<Image>();
+        img.color = new Color(0.78f, 0.24f, 0.26f, 0.9f);
+        img.sprite = DungeonUITheme.Instance?.cardFrame;
+        img.type = Image.Type.Sliced;
+
+        battleLockPillText = new GameObject("PillText", typeof(RectTransform)).AddComponent<TextMeshProUGUI>();
+        battleLockPillText.transform.SetParent(battleLockPill.transform, false);
+        var textRt = battleLockPillText.GetComponent<RectTransform>();
+        textRt.anchorMin = Vector2.zero;
+        textRt.anchorMax = Vector2.one;
+        textRt.offsetMin = Vector2.zero;
+        textRt.offsetMax = Vector2.zero;
+        battleLockPillText.alignment = TextAlignmentOptions.Center;
+        battleLockPillText.fontSize = 16f;
+        battleLockPillText.fontStyle = FontStyles.Bold;
+        DungeonUITheme.ApplyCtaText(battleLockPillText);
+
+        var cg = battleLockPill.GetComponent<CanvasGroup>();
+        cg.alpha = 0f;
+        cg.blocksRaycasts = false;
+        cg.interactable = false;
+    }
+
+    void UpdateBattleLockPill(bool ready, int filled, int needed)
+    {
+        if (battleLockPill == null || battleLockPillText == null) return;
+
+        var cg = battleLockPill.GetComponent<CanvasGroup>();
+        if (cg == null) return;
+
+        if (!ready && needed > 0)
+        {
+            int missing = needed - filled;
+            battleLockPillText.text = $"BATTLE LOCKED — Place {missing} more hero{(missing > 1 ? "s" : "")}";
+            cg.alpha = 1f;
+        }
+        else
+        {
+            cg.alpha = 0f;
         }
     }
+
+    private UnityEngine.Coroutine battleLockedFeedbackRoutine;
 
     void OnBattle()
     {
         if (GameRunData.Instance == null) return;
+
+        int filled = 0;
+        foreach (var h in formation) if (h != null) filled++;
+        int needed = GameRunData.Instance.squad.Count;
+        if (filled != needed || needed == 0)
+        {
+            if (battleLockedFeedbackRoutine != null) StopCoroutine(battleLockedFeedbackRoutine);
+            battleLockedFeedbackRoutine = StartCoroutine(BattleLockedFeedbackRoutine(filled, needed));
+            return;
+        }
+
         GameRunData.Instance.formation = (HeroInstance[])formation.Clone();
         SceneNav.GoTo(SceneNames.Combat);
+    }
+
+    private System.Collections.IEnumerator BattleLockedFeedbackRoutine(int filled, int needed)
+    {
+        var btnImg = battleButton != null ? battleButton.GetComponent<UnityEngine.UI.Image>() : null;
+        var label = battleButton != null ? battleButton.GetComponentInChildren<TextMeshProUGUI>() : null;
+        var origCol = btnImg != null ? btnImg.color : Color.white;
+        var origText = label != null ? label.text : string.Empty;
+
+        int missing = Mathf.Max(0, needed - filled);
+        if (btnImg != null) btnImg.color = new Color(0.55f, 0.55f, 0.58f, 1f);
+        if (label != null) label.text = missing > 0 ? $"Place {missing} more" : "Place Heroes";
+
+        // Horizontal nudge (0.15s right, 0.15s back) to signal "not yet"
+        var btnRt = battleButton != null ? battleButton.transform as RectTransform : null;
+        if (btnRt != null)
+        {
+            Vector2 origPos = btnRt.anchoredPosition;
+            float half = 0.15f, dist = 18f, t = 0f;
+            while (t < half) { t += Time.unscaledDeltaTime; btnRt.anchoredPosition = origPos + new Vector2(Mathf.Sin(Mathf.Min(1f, t / half) * Mathf.PI) * dist, 0f); yield return null; }
+            t = 0f;
+            while (t < half) { t += Time.unscaledDeltaTime; btnRt.anchoredPosition = origPos - new Vector2(Mathf.Sin(Mathf.Min(1f, t / half) * Mathf.PI) * dist, 0f); yield return null; }
+            btnRt.anchoredPosition = origPos;
+        }
+
+        yield return new WaitForSecondsRealtime(2f);
+
+        if (btnImg != null) btnImg.color = origCol;
+        if (label != null) label.text = origText;
+        CheckBattleReady();
+        battleLockedFeedbackRoutine = null;
     }
 }
